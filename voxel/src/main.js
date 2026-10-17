@@ -6,6 +6,7 @@ import * as W from "./world.js";
 import { loadModel, meshVoxels, gridFromVoxels } from "./voxels.js";
 import { personVoxels, animalVoxels, DOG_COLORS, CAT_LOOKS, PIGEON_COLORS, DUCK_LOOKS } from "./people.js";
 import { createSim } from "./sim.js";
+import { WHEELS, wheelModel } from "../models/recipes/props.js";
 
 const qs = new URLSearchParams(location.search);
 if (qs.get("seed")) W.setSeed(+qs.get("seed"));
@@ -160,6 +161,29 @@ async function buildActors() {
     scene.add(im); actorMeshes.set(k, im); if (list[0].pick) pickables.push(im);
   }));
 }
+// Vehicle wheels: one InstancedMesh per wheeled model (WHEELS in props.js), spun by distance travelled / radius.
+const wheelSets = [];
+function buildVehicleWheels() {
+  for (const [model, spec] of Object.entries(WHEELS)) {
+    const carts = sim.ents.filter((e) => e.look?.model === model); if (!carts.length) continue;
+    const g = wheelModel(spec.r), grid = gridFromVoxels([...g.v].map(([k, c]) => [k % g.size, Math.floor(k / (g.size * g.size)), Math.floor(k / g.size) % g.size, c]), g.size);
+    const im = new THREE.InstancedMesh(meshVoxels(grid, { pivot: "center" }), vmat, carts.length * spec.at.length);
+    im.castShadow = true; im.receiveShadow = !LOW; im.frustumCulled = false; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const offs = spec.at.map(([x, y, z]) => new THREE.Vector3(x + 0.5 - spec.grid / 2, y + 0.5, z + 0.5 - spec.grid / 2));
+    scene.add(im); wheelSets.push({ im, carts, offs, r: spec.r });
+  }
+}
+const WM = new THREE.Matrix4(), WR = new THREE.Matrix4();
+function updateVehicleWheels() {
+  for (const { im, carts, offs, r } of wheelSets) {
+    carts.forEach((e, i) => {
+      e._mesh.getMatrixAt(e._slot, M4);
+      WR.makeRotationZ(-(e.roll ?? 0) / r);   // forward is +x in model space, so rolling turns the wheel about z
+      offs.forEach((o, k) => im.setMatrixAt(i * offs.length + k, WM.copy(M4).multiply(WR.setPosition(o))));
+    });
+    im.instanceMatrix.needsUpdate = true;
+  }
+}
 let wheel = null;
 async function buildWheel() { wheel = new THREE.Mesh(await modelGeometry("waterwheel", null, "waterwheel"), vmat); wheel.castShadow = true; wheel.position.set(L.WHEEL.x, 10, W.RIVER.zc(L.WHEEL.x) - 3); scene.add(wheel); }
 
@@ -170,6 +194,7 @@ function updateActors(dt) {
     if (e.hidden) { place(e, e.x, -50, e.z, 0, 0); continue; }
     const moved = Math.hypot(e.x - (e.px ?? e.x), e.z - (e.pz ?? e.z)); e.px = e.x; e.pz = e.z;
     e.hp += moved * (e.kind === "vehicle" ? 0.5 : 0.75);
+    if (e.kind === "vehicle") e.roll = (e.roll ?? 0) + moved / (e.scale ?? 1);
     const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;   // slower walkers bob less
     place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
   }
@@ -177,6 +202,7 @@ function updateActors(dt) {
   for (const b of sim.boats) place(b, b.x, -0.6 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
   for (const d of sim.ducks) place(d, d.x, -0.2 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
   for (const im of actorMeshes.values()) im.instanceMatrix.needsUpdate = true;
+  updateVehicleWheels();
   if (wheel) wheel.rotation.z = -sim.time * 0.8;
 }
 
@@ -228,7 +254,7 @@ city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.inf
   try {
     setStatus("BUILDING THE CITY...");
     tufts(); crops(); bushes();
-    await Promise.all([buildStatics(), buildActors(), buildWheel()]);
+    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels();
     setView(qs.get("view") ?? "town");
     if (qs.get("t")) city.advance(+qs.get("t"));
     document.getElementById("loading")?.remove();

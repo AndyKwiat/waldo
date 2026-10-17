@@ -53,8 +53,18 @@ export function target() { const g = new G(12), c = 6; g.line(c - 2, 0, c, c, 6,
   for (const [r, col] of [[5, M.hay], [4, M.tomato], [3, M.cream], [2, M.tomato], [1, M.cream]]) g.disc(c, 7, c + 1, r, col, "z"); return g; }
 
 // ---- vehicles (forward +X)
+// Wheels of wheeled vehicles are NOT baked into the models: the game draws them as separate instances and spins
+// them as the vehicle moves. Each entry: model grid size, wheel radius, wheel centre cells [x, y, z] (wheel in the x-y plane).
+export const WHEELS = {
+  rickshaw: { grid: 24, r: 5, at: [[8, 5, 6], [8, 5, 17]] },
+  oxcart: { grid: 32, r: 5, at: [[8, 5, 8], [8, 5, 19]] },
+  barrow: { grid: 16, r: 2.5, at: [[13, 3, 7], [13, 3, 8]] },
+};
+/** One wheel centred in an odd-sized grid (so pivot "center" puts the hub at the origin). */
+export function wheelModel(r) { const S = 2 * Math.ceil(r) + 3, c = (S - 1) / 2, g = new G(S); wheel(g, c, c, c, r); return g; }
+
 export function rickshaw() { const g = new G(24);
-  wheel(g, 8, 5, 6, 5); wheel(g, 8, 5, 17, 5); g.line(8, 5, 6, 8, 5, 17, M.woodD);
+  g.line(8, 5, 7, 8, 5, 16, M.woodD); // axle (wheels: WHEELS.rickshaw)
   g.box(5, 6, 7, 12, 8, 16, (x, y) => (y === 8 ? CL.d : CLOTH)); g.box(5, 9, 7, 5, 12, 16, CLOTH);
   for (let z = 7; z <= 16; z++) { g.set(5, 13, z, "#3a3440"); g.set(6, 14, z, "#3a3440"); g.set(7, 14, z, "#3a3440"); g.set(8, 13, z, "#4a4450"); }
   seated(g, 8, 9, 10, { top: "#d04a6a" });
@@ -62,7 +72,7 @@ export function rickshaw() { const g = new G(24);
   figure(g, 17, 0, 10, { top: "#f0e8d0", bottom: "#3a6ad8", hat: "straw" }); return g; }
 export function oxcart() { const g = new G(32), rnd = rng(8);
   g.box(2, 4, 9, 15, 4, 18, M.wood); for (const z of [9, 18]) g.box(2, 5, z, 15, 6, z, M.woodL); g.box(2, 5, 9, 2, 6, 18, M.woodL);
-  wheel(g, 8, 5, 8, 5); wheel(g, 8, 5, 19, 5); g.line(8, 5, 8, 8, 5, 19, M.woodD);
+  g.line(8, 5, 9, 8, 5, 18, M.woodD); // axle (wheels: WHEELS.oxcart)
   g.ball(8, 6, 13.5, 6, 5, 4, (x, y) => (rnd() < 0.2 ? M.hayD : y > 9 ? M.hayL : M.hay));
   seated(g, 14, 5, 12, { top: "#8a5a32", hat: "straw" });
   g.line(15, 5, 13, 20, 5, 13, M.woodD);
@@ -78,7 +88,7 @@ export function sedan() { const g = new G(24);
   figure(g, 1, 0, 10, { top: "#c8342a", bottom: "#c8342a", hat: "cap" }); figure(g, 19, 0, 10, { top: "#c8342a", bottom: "#c8342a", hat: "cap" }); return g; }
 export function barrow() { const g = new G(16), rnd = rng(4);
   g.box(7, 3, 5, 13, 4, 10, M.woodL); for (let x = 7; x <= 13; x++) for (let z = 5; z <= 10; z++) if (rnd() < 0.8) g.set(x, 5, z, [M.veg, M.orange, M.tomato, M.hay][Math.floor(rnd() * 4)]);
-  wheel(g, 13, 3, 7, 2.5); wheel(g, 13, 3, 8, 2.5); g.line(7, 4, 5, 3, 5, 5, M.woodD); g.line(7, 4, 10, 3, 5, 10, M.woodD); g.box(8, 0, 5, 8, 2, 5, M.woodD); g.box(8, 0, 10, 8, 2, 10, M.woodD);
+  g.line(7, 4, 5, 3, 5, 5, M.woodD); g.line(7, 4, 10, 3, 5, 10, M.woodD); g.box(8, 0, 5, 8, 2, 5, M.woodD); g.box(8, 0, 10, 8, 2, 10, M.woodD);
   figure(g, 0, 0, 6, { top: "#8a8a96", bottom: "#3a2a22", hat: "straw" }); return g; }
 
 // ---- river
