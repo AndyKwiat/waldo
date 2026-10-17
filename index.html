@@ -411,14 +411,22 @@ function drawBird(ctx,f){ ctx.strokeStyle=OUT; ctx.lineWidth=1.2; ctx.lineCap='r
   ctx.stroke(); }
 
 // ------------------------------------------------------------------ ARCHITECTURE KIT (crisp pixel drawing)
-// Upturned Chinese tile roof, rasterized column by column: tube-tile channels, ridge, hip ridges, end caps.
+// ---- shared architecture palette
+const GOLD='#f0c040', GOLD_D='#b8862a', WOOD='#8a5a32', WOOD_L='#b07a44', WOOD_D='#5e3a1e', PAPER='#f6e6b8', PAPER_D='#e6d09a', INTERIOR='#3a2430', BEAST='#4a5a6a';
+function dither(ctx,x,y,w,h,c,phase=0){ ctx.fillStyle=c; x=Math.round(x); y=Math.round(y); for(let yy=0;yy<h;yy++) for(let xx=(yy+phase)&1;xx<w;xx+=2) ctx.fillRect(x+xx,y+yy,1,1); }
+function glyph(ctx,x,y,c){ // abstract 3x4 calligraphy mark
+  const bits=rndi(0,4095); let n=0; for(let i=0;i<12;i++) if ((bits>>i)&1){ P(ctx,x+i%3,y+Math.floor(i/3),1,1,c); n++; }
+  if (n<5){ P(ctx,x,y+1,3,1,c); P(ctx,x+1,y,1,4,c); } }
+
+// Upturned Chinese tile roof, rasterized column by column: tube-tile channels with overlapping courses,
+// shaded ridge with openwork, hip ridges with little guardian beasts, round eave caps, drip tiles, ridge-end ornaments.
 function pagodaRoof(h,ctx,x0,x1,y,rh,color,ridgeInset=10,eave=8){
   y=Math.round(y); rh=Math.round(rh);
   const cx=(x0+x1)/2, half=(x1-x0)/2;
   const hwB=half+eave, topHalf=Math.max(1,half-ridgeInset), lift0=Math.max(0,half-2);
   const curl=Math.max(1,Math.round(Math.min(8,rh*0.3)));
-  const small=rh<14, ridgeT=small?2:4, eaveT=small?2:4;
-  const Lc=darken(color,1.22), Dc=darken(color,0.76), DD=darken(color,0.52), RC=darken(color,0.4), RL=darken(color,0.6), CAP=darken(color,1.42);
+  const small=rh<14, ridgeT=small?2:(rh>=22?5:4), eaveT=small?2:4;
+  const L2=darken(color,1.45), Lc=darken(color,1.2), Dc=darken(color,0.78), DD=darken(color,0.56), RC=darken(color,0.4), RL=darken(color,0.62), CAP=darken(color,1.3);
   const xs=Math.floor(cx-hwB), xe=Math.ceil(cx+hwB);
   for (let px=xs;px<xe;px++){
     const ax=Math.abs(px+0.5-cx); if (ax>hwB) continue;
@@ -428,22 +436,60 @@ function pagodaRoof(h,ctx,x0,x1,y,rh,color,ridgeInset=10,eave=8){
     const m=((px%4)+4)%4; const tile=m===0?Lc:(m===3?Dc:color);
     if (ax>hwB-1.2){ P(ctx,px,y-t,1,t-b+1,OUT); continue; }
     P(ctx,px,y-t,1,t-b+1,tile);
-    if (ax<=topHalf){ P(ctx,px,y-t+ridgeT,1,2,Dc); P(ctx,px,y-t,1,ridgeT,RC); P(ctx,px,y-t+ridgeT-1,1,1,RL); }
-    else P(ctx,px,y-t,1,Math.min(2,t-b),RC);
-    P(ctx,px,y-b-eaveT+1,1,eaveT-1, m===3?OUT:CAP);
-    P(ctx,px,y-b-eaveT+1,1,1,DD);
+    if (!small){
+      const faceBot=b+eaveT, faceTop=t-(ax<=topHalf?ridgeT+2:3), split=faceBot+(faceTop-faceBot)*0.6;
+      for (let k=faceBot;k<=faceTop;k++){ const row=y-k, c5=(k-b)%5;
+        if (c5===0) P(ctx,px,row,1,1, m===3?DD:(m===0?color:Dc));          // tile course step
+        else if (c5===1 && m===1) P(ctx,px,row,1,1,L2);                      // lit lip of each tile
+        else if (k>split && m!==0 && ((px+k)&1)) P(ctx,px,row,1,1,Dc);      // dithered shade toward the ridge
+        if (chance(0.02)) P(ctx,px,row,1,1,chance(0.5)?DD:Lc);              // weathering
+      }
+    }
+    if (ax<=topHalf){
+      P(ctx,px,y-t+ridgeT,1,2,Dc); P(ctx,px,y-t,1,ridgeT,RC);
+      if (ridgeT>=4){ P(ctx,px,y-t+1,1,1,RL); if (px%3===0) P(ctx,px,y-t+2,1,2,RL); } else P(ctx,px,y-t+ridgeT-1,1,1,RL);
+    } else {
+      P(ctx,px,y-t,1,Math.min(3,t-b),RC); P(ctx,px,y-t+1,1,1,RL);
+      if (!small && ax>hwB-10 && ax<hwB-3 && ((px%3)+3)%3===0){ P(ctx,px,y-t-2,2,3,OUT); P(ctx,px,y-t-1,1,1,BEAST); }
+    }
+    const e0=y-b-eaveT+1;
+    if (eaveT>=4){ P(ctx,px,e0,1,1,DD); P(ctx,px,e0+1,1,2, m===0?L2:(m===1?CAP:(m===2?Dc:OUT))); }
+    else { P(ctx,px,e0,1,eaveT-1, m===3?OUT:CAP); P(ctx,px,e0,1,1,DD); }
     P(ctx,px,y-t,1,1,OUT); P(ctx,px,y-b,1,1,OUT);
+    if (!small && m===1) P(ctx,px,y-b+1,1,1,OUT);
   }
-  if (!small){ for (const s of [-1,1]){ const ex=Math.round(cx+s*topHalf); P(ctx,ex-1,y-rh-4,3,5,OUT); P(ctx,ex,y-rh-3,1,3,RC); } }
+  if (!small){ for (const s of [-1,1]){ const ex=Math.round(cx+s*topHalf);
+    P(ctx,ex-2,y-rh-6,4,7,OUT); P(ctx,ex-1,y-rh-5,2,5,RC); P(ctx,ex-1,y-rh-5,1,2,RL);
+    P(ctx,ex+(s>0?2:-3),y-rh-8,2,4,OUT); P(ctx,ex+(s>0?2:-2),y-rh-7,1,1,RL); } }
 }
-function lattice(h,ctx,x,y,w,hh){ x=Math.round(x); y=Math.round(y); w=Math.round(w); hh=Math.max(4,Math.round(hh));
-  P(ctx,x-1,y-1,w+2,hh+2,OUT); P(ctx,x,y,w,hh,'#7a3e22'); P(ctx,x+1,y+1,w-2,hh-2,'#f6e6b8');
-  for(let xx=x+3;xx<x+w-1;xx+=3) P(ctx,xx,y+1,1,hh-2,'#c08a50');
-  for(let yy=y+3;yy<y+hh-1;yy+=3) P(ctx,x+1,yy,w-2,1,'#c08a50');
-  P(ctx,x+1,y+1,w-2,1,'#fffbe8');
-  P(ctx,x-2,y+hh+1,w+4,2,OUT); P(ctx,x-1,y+hh+1,w+2,1,'#a06a3a'); }
-function moon(ctx,cx,cy,r){ disc(ctx,cx,cy,r+1,OUT); disc(ctx,cx,cy,r,'#7a3e22'); disc(ctx,cx,cy,r-1,'#f6e6b8');
-  P(ctx,cx-r+1,cy,2*r-1,1,'#c08a50'); P(ctx,cx,cy-r+1,1,2*r-1,'#c08a50'); P(ctx,cx-r+2,cy-3,2*r-3,1,'#c08a50'); P(ctx,cx-r+2,cy+3,2*r-3,1,'#c08a50'); }
+
+// Windows. variant: 0 grid lattice, 1 key pattern, 2 slats, 3 open with a resident, 4 open with a lamp
+function lattice(h,ctx,x,y,w,hh,variant=0){
+  x=Math.round(x); y=Math.round(y); w=Math.round(w); hh=Math.max(5,Math.round(hh));
+  P(ctx,x-2,y-2,w+4,hh+4,OUT);
+  P(ctx,x-1,y-1,w+2,hh+2,WOOD); P(ctx,x-1,y-1,w+2,1,WOOD_L); P(ctx,x-1,y-1,1,hh+2,WOOD_L); P(ctx,x-1,y+hh,w+2,1,WOOD_D); P(ctx,x+w,y-1,1,hh+2,WOOD_D);
+  if (variant>=3 && hh>=11){
+    P(ctx,x,y,w,hh,INTERIOR); P(ctx,x,y,w,1,'#22141c');
+    if (variant===3){ const skin=pick(SKINS), hair=pick(HAIRS), cl=pick(CLOTH), hx=x+Math.floor(w/2), hb=y+hh;
+      P(ctx,hx-4,hb-3,9,3,cl); P(ctx,hx-4,hb-3,9,1,darken(cl,1.2)); disc(ctx,hx,hb-6,3,skin); P(ctx,hx+1,hb-7,2,3,darken(skin,0.86));
+      P(ctx,hx-3,hb-10,7,2,hair); P(ctx,hx-3,hb-9,1,2,hair); P(ctx,hx-1,hb-7,1,1,OUT); P(ctx,hx+1,hb-7,1,1,OUT); }
+    else { const lx=x+Math.floor(w/2); dither(ctx,lx-3,y+3,7,hh-4,'#7a4a30'); P(ctx,lx-1,y+hh-6,3,4,'#ffd060'); P(ctx,lx,y+hh-5,1,2,'#fff4b0'); P(ctx,lx-2,y+hh-2,5,1,WOOD_D); }
+    P(ctx,x,y,w,2,pick(['#c8342a','#2f6fa8','#3aa060'])); for(let xx=x;xx<x+w;xx+=2) P(ctx,xx,y+2,1,1,OUT);
+  } else {
+    P(ctx,x,y,w,hh,PAPER); dither(ctx,x+Math.floor(w/2),y+Math.floor(hh/2),Math.ceil(w/2),Math.ceil(hh/2),PAPER_D);
+    const LC='#a8743e';
+    if (variant===1){ for (const k of [1,3]) if (w>2*k+2 && hh>2*k+2){ P(ctx,x+k,y+k,w-2*k,1,LC); P(ctx,x+k,y+hh-k-1,w-2*k,1,LC); P(ctx,x+k,y+k,1,hh-2*k,LC); P(ctx,x+w-k-1,y+k,1,hh-2*k,LC); } P(ctx,x+Math.floor(w/2),y,1,hh,LC); }
+    else if (variant===2){ for(let xx=x+1;xx<x+w;xx+=2) P(ctx,xx,y,1,hh,LC); P(ctx,x,y+Math.floor(hh/3),w,1,WOOD); P(ctx,x,y+Math.floor(2*hh/3),w,1,WOOD); }
+    else { for(let xx=x+2;xx<x+w;xx+=3) P(ctx,xx,y,1,hh,LC); for(let yy=y+2;yy<y+hh;yy+=3) P(ctx,x,yy,w,1,LC); }
+    P(ctx,x,y,w,1,darken(PAPER,0.82));
+  }
+  P(ctx,x-3,y+hh+2,w+6,2,OUT); P(ctx,x-2,y+hh+2,w+4,1,WOOD_L);
+}
+function flowerBox(ctx,x,y,w){ box(ctx,x-2,y,w+4,4,'#8a4a2a'); P(ctx,x-1,y+1,w+2,1,'#b0603a');
+  for(let xx=x-1;xx<x+w+1;xx++){ P(ctx,xx,y-1,1,1,(xx&1)?'#3aa848':'#2e8a3a'); if ((xx&1)===0 && chance(0.7)){ P(ctx,xx,y-2,1,1,pick(['#e04a3a','#ffd050','#f08ab0','#ffffff','#a0c0ff'])); } } }
+function blind(ctx,x,y,w){ P(ctx,x-1,y,w+2,3,OUT); P(ctx,x,y+1,w,1,'#d8b078'); for(let xx=x+1;xx<x+w;xx+=3) P(ctx,xx,y+1,1,1,'#a07a40'); P(ctx,x+1,y+3,1,2,'#a07a40'); P(ctx,x+w-2,y+3,1,2,'#a07a40'); }
+function moon(ctx,cx,cy,r){ disc(ctx,cx,cy,r+2,OUT); disc(ctx,cx,cy,r+1,WOOD); disc(ctx,cx-1,cy-1,r,WOOD_L); disc(ctx,cx,cy,r,PAPER); dither(ctx,cx,cy,r,r,PAPER_D);
+  const LC='#a8743e'; P(ctx,cx-r+1,cy,2*r-1,1,LC); P(ctx,cx,cy-r+1,1,2*r-1,LC); P(ctx,cx-r+2,cy-3,2*r-3,1,LC); P(ctx,cx-r+2,cy+3,2*r-3,1,LC); P(ctx,cx-3,cy-r+2,1,2*r-3,LC); P(ctx,cx+3,cy-r+2,1,2*r-3,LC); }
 function stoneBase(h,ctx,x,y,w,hh){ x=Math.round(x);y=Math.round(y);w=Math.round(w);hh=Math.round(hh);
   P(ctx,x,y,w,hh,OUT); P(ctx,x+1,y+1,w-2,hh-2,STONE); P(ctx,x+1,y+1,w-2,1,STONE_L);
   const sd=darken(STONE,0.72); let k=0;
@@ -453,70 +499,130 @@ function brickWall(h,ctx,x,y,w,hh,color=BRICK){ x=Math.round(x);y=Math.round(y);
   P(ctx,x,y,w,hh,color); let k=0;
   for(let yy=y+4; yy<y+hh; yy+=4,k++){ P(ctx,x,yy,w,1,D); for(let xx=x+(k%2?5:0); xx<x+w; xx+=10){ P(ctx,xx,yy-3,1,3,D); if (x+w-xx-1>0) P(ctx,xx+1,yy-3,Math.min(8,x+w-xx-1),1,L); } }
   P(ctx,x,y,1,hh,OUT); P(ctx,x+w-1,y,1,hh,OUT); P(ctx,x,y,w,1,OUT); P(ctx,x,y+hh-1,w,1,OUT); }
+function brickSkirt(ctx,x,y,w,hh){ P(ctx,x,y-1,w,1,OUT); P(ctx,x,y,w,1,'#d8d2c6'); P(ctx,x,y+1,w,hh-1,'#9e978b'); let k=0;
+  for(let yy=y+1;yy<y+hh;yy+=3,k++){ P(ctx,x,yy+2,w,1,'#7e786e'); for(let xx=x+(k%2?3:0);xx<x+w;xx+=6){ P(ctx,xx,yy,1,2,'#7e786e'); if (xx+1<x+w) P(ctx,xx+1,yy,Math.min(4,x+w-xx-1),1,'#b8b2a6'); } } }
 function crenels(h,x,y,w,size,color){ for(let cx=x; cx<x+w-size*0.5; cx+=size*2) h.rect(cx,y-size,size,size+1,color,1); }
 function railing(h,ctx,x,y,w,color='#c0382c'){ x=Math.round(x);y=Math.round(y);w=Math.round(w);
   for(let xx=x+1;xx<x+w-1;xx+=4){ P(ctx,xx,y+3,1,4,color); P(ctx,xx+1,y+3,1,4,OUT); }
   P(ctx,x,y,w,3,OUT); P(ctx,x,y+1,w,1,darken(color,1.2)); P(ctx,x,y+7,w,1,OUT); }
 function pillar(ctx,x,y,w,hh,c){ x=Math.round(x);y=Math.round(y);hh=Math.round(hh);
   P(ctx,x,y,w,hh,OUT); P(ctx,x+1,y,w-2,hh,c); P(ctx,x+1,y,1,hh,darken(c,1.3)); if (w>3) P(ctx,x+w-2,y,1,hh,darken(c,0.68));
-  P(ctx,x-1,y+hh-3,w+2,3,OUT); P(ctx,x,y+hh-2,w,1,STONE_L); }
+  if (hh>12){ P(ctx,x-1,y,w+2,3,OUT); P(ctx,x,y+1,w,1,'#2a9a80'); P(ctx,x+Math.floor(w/2),y+1,1,1,GOLD); }
+  P(ctx,x-1,y+hh-3,w+2,3,OUT); P(ctx,x,y+hh-2,w,1,STONE_L); P(ctx,x,y+hh-1,w,1,STONE); }
 function lantern(ctx,x,y){ x=Math.round(x);y=Math.round(y);
-  P(ctx,x,y,1,2,OUT); P(ctx,x-3,y+2,7,8,OUT); P(ctx,x-2,y+3,5,6,'#e0382c'); P(ctx,x-2,y+3,5,1,'#f0c040'); P(ctx,x-2,y+8,5,1,'#f0c040');
-  P(ctx,x-1,y+4,1,3,'#ff9070'); P(ctx,x+1,y+4,1,4,'#a82020'); P(ctx,x,y+10,1,3,'#f0c040'); }
-function door(ctx,cx,yB,dw,dh,c){ cx=Math.round(cx); dh=Math.round(dh); const x=cx-dw/2, yt=yB-dh;
-  P(ctx,x-3,yt-3,dw+6,dh+3,OUT); P(ctx,x-2,yt-2,dw+4,dh+2,'#6a3420'); P(ctx,x,yt,dw,dh,c);
-  const hl=darken(c,1.25), sd=darken(c,0.7);
-  P(ctx,x,yt,1,dh,hl); P(ctx,cx+1,yt,1,dh,hl); P(ctx,cx-1,yt,1,dh,sd); P(ctx,x+dw-1,yt,1,dh,sd); P(ctx,cx,yt,1,dh,OUT);
-  for(let r=yt+3;r<yB-2;r+=4) for(const sx of [x+2,x+4,cx+3,cx+5]) P(ctx,sx,r,1,1,'#f8d050');
-  P(ctx,cx-3,yt+Math.round(dh/2),2,2,'#f8d050'); P(ctx,cx+2,yt+Math.round(dh/2),2,2,'#f8d050');
-  P(ctx,x-4,yt-5,dw+8,3,OUT); P(ctx,x-3,yt-4,dw+6,1,'#c0382c'); }
+  P(ctx,x,y,1,2,OUT); P(ctx,x-3,y+2,7,8,OUT); P(ctx,x-2,y+3,5,6,'#e0382c'); P(ctx,x-2,y+3,5,1,GOLD); P(ctx,x-2,y+8,5,1,GOLD);
+  P(ctx,x-1,y+4,1,3,'#ff9070'); P(ctx,x+1,y+4,1,4,'#a82020'); P(ctx,x,y+10,1,3,GOLD); }
+// door: framed doorway with red couplet strips; closed studded leaves or open with a cloth curtain
+function door(ctx,cx,yB,dw,dh,c,opts={}){ cx=Math.round(cx); dh=Math.round(dh); const x=cx-dw/2, yt=yB-dh;
+  P(ctx,x-4,yt-4,dw+8,dh+4,OUT); P(ctx,x-3,yt-3,dw+6,dh+3,'#7a4024'); P(ctx,x-3,yt-3,dw+6,1,'#a05a34');
+  if (opts.couplets!==false){ for (const sx of [x-3,x+dw+1]){ P(ctx,sx,yt-2,2,dh+1,'#d8342a'); for(let gy=yt;gy<yB-1;gy+=3) P(ctx,sx+((gy>>1)&1),gy,1,1,GOLD); } P(ctx,x-1,yt-3,dw+2,1,'#d8342a'); }
+  P(ctx,x-1,yt-1,dw+2,dh+1,OUT);
+  if (opts.open){ P(ctx,x,yt,dw,dh,INTERIOR); P(ctx,x,yt,dw,2,'#22141c'); dither(ctx,x+2,yt+3,dw-4,dh-4,'#4a3038');
+    const cc=opts.curtain||'#2f6fa8', chh=Math.round(dh*0.6);
+    P(ctx,x,yt,dw,chh,cc); P(ctx,x,yt,dw,1,darken(cc,1.3)); P(ctx,cx,yt+2,1,chh-2,darken(cc,0.6));
+    for(let xx=x;xx<x+dw;xx+=2) P(ctx,xx,yt+chh,1,1,cc);
+    for (const ex of [cx-4,cx+4]){ disc(ctx,ex,yt+Math.round(chh*0.45),2,'#fff4d8'); P(ctx,ex,yt+Math.round(chh*0.45),1,1,cc); }
+  } else { P(ctx,x,yt,dw,dh,c);
+    const hl=darken(c,1.25), sd=darken(c,0.7);
+    P(ctx,x,yt,1,dh,hl); P(ctx,cx+1,yt,1,dh,hl); P(ctx,cx-1,yt,1,dh,sd); P(ctx,x+dw-1,yt,1,dh,sd); P(ctx,cx,yt,1,dh,OUT);
+    for(let r=yt+3;r<yB-2;r+=4) for(const sx of [x+2,x+4,cx+3,cx+5]) P(ctx,sx,r,1,1,'#f8d050');
+    P(ctx,cx-3,yt+Math.round(dh/2),2,2,'#f8d050'); P(ctx,cx+2,yt+Math.round(dh/2),2,2,'#f8d050'); }
+}
+// front-of-house clutter, drawn standing on the ground line (y=0)
+function clutter(ctx,x,kind){ x=Math.round(x);
+  switch(kind){
+    case 'crates': box(ctx,x-7,-11,14,11,WOOD_L); P(ctx,x-6,-10,12,1,'#d8a868'); P(ctx,x-6,-6,12,1,WOOD); for(let i=0;i<10;i++) P(ctx,x-5+i,-9+Math.floor(i*0.8),1,1,WOOD);
+      box(ctx,x-4,-19,10,9,WOOD_L); P(ctx,x-3,-18,8,1,'#d8a868'); P(ctx,x-3,-14,8,1,WOOD); break;
+    case 'barrel': P(ctx,x-6,-15,12,15,OUT); P(ctx,x-5,-14,10,13,'#a0603a'); P(ctx,x-4,-14,2,13,'#c8804a'); P(ctx,x+2,-14,2,13,'#7a4424'); P(ctx,x-5,-12,10,1,'#4a4a52'); P(ctx,x-5,-4,10,1,'#4a4a52'); P(ctx,x-5,-15,10,1,'#c8804a'); break;
+    case 'jars': for (const [ox,c,s] of [[-5,'#2f6fa8',6],[4,'#a0603a',5]]){ disc(ctx,x+ox,-s-1,s+1,OUT); disc(ctx,x+ox,-s-1,s,c); disc(ctx,x+ox-2,-s-3,Math.max(1,s-4),darken(c,1.4)); P(ctx,x+ox-2,-2*s-2,5,2,OUT); P(ctx,x+ox-1,-2*s-2,3,1,darken(c,0.7)); } break;
+    case 'firewood': for (const [ox,oy] of [[-6,-3],[0,-3],[6,-3],[-3,-8],[3,-8],[0,-13]]){ disc(ctx,x+ox,oy,3,OUT); disc(ctx,x+ox,oy,2,'#d8a868'); P(ctx,x+ox,oy,1,1,'#a0703a'); } break;
+    case 'veg': P(ctx,x-8,-8,16,8,OUT); P(ctx,x-7,-7,14,6,'#d8b078'); for(let xx=x-6;xx<x+7;xx+=2) P(ctx,xx,-7,1,6,'#b08850');
+      for (let i=0;i<4;i++){ const c=pick([['#58c060','#3aa848'],['#f07a2a','#c85a1a'],['#e04a3a','#a02a2a']]); disc(ctx,x-5+i*3.5,-9,2.4,OUT); disc(ctx,x-5+i*3.5,-9,1.6,c[0]); P(ctx,x-5+i*3.5,-10,1,1,'#ffffff'); } break;
+    case 'bonsai': box(ctx,x-5,-6,10,6,'#3a6ad8'); P(ctx,x-4,-5,8,1,'#7aa0e8'); P(ctx,x,-12,1,6,WOOD_D); for (const [ox,oy,r] of [[-3,-13,3],[3,-15,3],[0,-18,3]]){ disc(ctx,x+ox,oy,r+1,OUT); disc(ctx,x+ox,oy,r,'#2e9a44'); P(ctx,x+ox-1,oy-1,2,1,'#7ad870'); } break;
+    case 'bench': P(ctx,x-10,-6,20,3,OUT); P(ctx,x-9,-5,18,1,WOOD_L); P(ctx,x-8,-3,2,3,OUT); P(ctx,x+6,-3,2,3,OUT); break;
+    case 'broom': P(ctx,x,-22,1,16,WOOD_D); P(ctx,x-3,-7,7,7,OUT); P(ctx,x-2,-6,5,6,'#e0c080'); P(ctx,x-2,-4,5,1,'#a07a40'); break;
+  }
+}
+function laundry(ctx,x0,x1,y){ P(ctx,x0,y,x1-x0,1,WOOD_D); P(ctx,x0,y,1,6,WOOD_D); P(ctx,x1-1,y,1,6,WOOD_D);
+  for(let x=x0+4;x<x1-8;x+=rndi(9,13)){ const c=pick(CLOTH);
+    if (chance(0.6)){ box(ctx,x,y+1,9,3,c); box(ctx,x+2,y+3,5,6,c); P(ctx,x+3,y+4,3,1,darken(c,1.2)); }
+    else { box(ctx,x+1,y+1,7,3,c); box(ctx,x+1,y+3,3,7,c); box(ctx,x+5,y+3,3,7,c); } } }
+function awning(ctx,x0,w,y,c1){ const c2='#fff4d8';
+  for(let r=0;r<7;r++){ const ex=Math.round(r*0.6); P(ctx,x0-ex-1,y+r,w+2*ex+2,1,OUT); for(let xx=x0-ex;xx<x0+w+ex;xx++) P(ctx,xx,y+r,1,1, (Math.floor((xx-x0+40)/4)&1)?c1:c2); }
+  const ex=4; for(let xx=x0-ex;xx<x0+w+ex;xx++){ const sc=((xx-x0+40)%4); P(ctx,xx,y+7,1,1,sc<3?((Math.floor((xx-x0+40)/4)&1)?darken(c1,0.8):darken(c2,0.85)):OUT); if (sc===1) P(ctx,xx,y+8,1,1,OUT); }
+  P(ctx,x0-ex-1,y,w+2*ex+2,1,OUT); P(ctx,x0-ex,y+1,w+2*ex,1,darken(c1,1.2)); }
+function shopFlag(ctx,px,top,len,c){ P(ctx,px,top,2,-top,OUT); P(ctx,px,top,1,-top,WOOD_L); P(ctx,px-1,top-2,4,2,OUT); P(ctx,px,top-1,2,1,GOLD);
+  P(ctx,px+2,top+2,9,1,OUT); box(ctx,px+2,top+3,9,len,c); P(ctx,px+3,top+4,7,1,darken(c,1.25)); for(let gy=top+6;gy<top+len-5;gy+=5) glyph(ctx,px+5,gy,'#fff4d8');
+  for(let xx=px+3;xx<px+10;xx+=2) P(ctx,xx,top+3+len,1,2,OUT); }
 
 // ------------------------------------------------------------------ BUILDINGS
+const PLAT=7;
 function genHouse(front){
-  const w=rndi(64,104), eave=10;
-  const wallH=front?rndi(34,44):rndi(36,44), roofH=front?rndi(26,36):rndi(28,34);
-  const tiers=front?(chance(0.15)?2:1):(chance(0.55)?2:1);
-  const b={w,eave,wallH,roofH,tiers, wall:pick(WALLS), col:pick(COLUMN), roof:pick(ROOFS), beam:pick(['#2f6fa8','#2a8a7a','#3a5ab0']),
-    doorC:pick(['#c8342a','#a8282a','#8a4a2a']), lanterns:chance(0.55), sign:chance(0.35), signColor:pick(['#c8342a','#2f6fa8','#2a8a5a','#e0a030']),
-    door:rnd(-0.5,0.5), stone:chance(0.2), moon:chance(0.25), plant:chance(0.5), bays:Math.max(2,Math.round(w/26))};
-  b.wh2=Math.round(wallH*0.72); b.rh2=Math.round(roofH*0.85); b.base2=6+wallH+Math.round(roofH*0.5);
-  b.H=(tiers===2? b.base2+b.wh2+b.rh2 : 6+wallH+roofH)+10;
+  const w=rndi(66,106), eave=10;
+  const wallH=front?rndi(38,46):rndi(40,46), roofH=front?rndi(26,34):rndi(28,34);
+  const type=pick(['home','home','home','shop','shop','inn']);
+  const tiers=type==='inn'?2:(front?(chance(0.15)?2:1):(chance(0.5)?2:1));
+  const b={w,eave,wallH,roofH,tiers,type, wall:pick(WALLS), col:pick(COLUMN), roof:pick(ROOFS), beam:pick(['#2f6fa8','#2a8a7a','#3a5ab0']),
+    doorC:pick(['#c8342a','#a8282a','#8a4a2a']), lanterns:chance(0.6), door:rnd(-0.5,0.5), stone:chance(0.15), moon:chance(0.3), bays:Math.max(2,Math.round(w/28)),
+    awningC:pick(['#e04a3a','#3a6ad8','#3aa060','#f0b830']), curtain:pick(['#2f6fa8','#3a3440','#c8342a','#2a8a7a','#8a4ab0']), flagC:pick(['#c8342a','#fff4d8','#2f6fa8','#f0b830']),
+    laundry:chance(0.5), clutterN:rndi(1,3)};
+  b.wh2=Math.round(wallH*0.72); b.rh2=Math.round(roofH*0.85); b.base2=PLAT+wallH+Math.round(roofH*0.5);
+  b.H=(tiers===2? b.base2+b.wh2+b.rh2 : PLAT+wallH+roofH)+12;
   return b;
 }
 function wallSection(ctx,x0,yB,w,wh,b,upper){
   const yT=yB-wh, x1=x0+w;
   if (b.stone && !upper) brickWall(null,ctx,x0,yT,w,wh,BRICK_L);
-  else { P(ctx,x0,yT,w,wh,b.wall); const sp=darken(b.wall,0.92); for(let i=0;i<w*wh/45;i++) P(ctx,x0+rndi(1,w-2),yT+rndi(8,wh-2),1,1,sp); P(ctx,x0,yB-2,w,2,darken(b.wall,0.84)); }
-  P(ctx,x0,yT+7,w,2,darken(b.wall,0.7));
+  else { P(ctx,x0,yT,w,wh,b.wall); const sp=darken(b.wall,0.93), hl=darken(b.wall,1.04);
+    for(let i=0;i<w*wh/28;i++) P(ctx,x0+rndi(1,w-2),yT+rndi(10,wh-2),1,1,chance(0.65)?sp:hl);
+    if (chance(0.45)){ let cx=x0+rndi(6,w-6), cy=yT+rndi(14,wh-12); const cc=darken(b.wall,0.74); for(let i=0;i<6;i++){ P(ctx,cx,cy,1,1,cc); cx+=rndi(-1,1); cy+=1; } }
+    if (!upper) brickSkirt(ctx,x0,yB-8,w,8); else P(ctx,x0,yB-2,w,2,darken(b.wall,0.84)); }
+  P(ctx,x0,yT+9,w,2,darken(b.wall,0.66)); dither(ctx,x0,yT+11,w,2,darken(b.wall,0.8));
   const bays=upper?Math.max(1,b.bays-1):b.bays, bw=w/bays;
   const doorBay=Math.min(bays-1,Math.max(0,Math.floor((b.door+0.5)*bays)));
   let dx=null;
+  const winH=Math.min(14,wh-(upper?17:25));
   for(let i=0;i<bays;i++){ const c=Math.round(x0+(i+0.5)*bw);
-    if (!upper && i===doorBay){ dx=c; door(ctx,c,yB,16,Math.min(22,wh-11),b.doorC); }
-    else if (b.moon && !upper && i%2===0 && wh>=36) moon(ctx,c,yT+Math.round(wh*0.56),Math.min(8,Math.floor((wh-16)/2)));
-    else lattice(null,ctx,c-7,yT+11,14,Math.min(14,wh-(upper?14:20)));
+    if (!upper && i===doorBay){ dx=c; door(ctx,c,yB,16,Math.min(22,wh-15),b.doorC,{open:b.type!=='home'||chance(0.3),curtain:b.curtain}); continue; }
+    if (b.moon && !upper && i%2===0 && wh>=40){ moon(ctx,c,yT+Math.round(wh*0.52),Math.min(8,Math.floor((wh-20)/2))); continue; }
+    const r=rand(), v = r<(upper?0.22:0.1)?3 : r<(upper?0.34:0.18)?4 : rndi(0,2);
+    const wy=yT+14; lattice(null,ctx,c-7,wy,14,winH,v);
+    if (v<3 && chance(0.25)) blind(ctx,c-7,wy-3,14);
+    if (chance(0.35)) flowerBox(ctx,c-7,wy+winH+4,14);
   }
-  for(let i=0;i<=bays;i++){ let px=Math.round(x0+i*bw)-2; px=Math.max(x0,Math.min(x1-5,px)); pillar(ctx,px,yT+6,5,wh-6,b.col); }
-  P(ctx,x0-1,yT,w+2,7,OUT); P(ctx,x0,yT+1,w,5,b.beam); P(ctx,x0,yT+1,w,1,darken(b.beam,1.3));
-  for(let xx=x0+2;xx<x1-5;xx+=7){ P(ctx,xx,yT+3,2,2,'#f0c848'); P(ctx,xx+3,yT+3,2,2,'#7ad0a0'); }
-  if (b.lanterns && !upper) for(let i=1;i<bays;i++) lantern(ctx,Math.round(x0+i*bw),yT+7);
+  for(let i=0;i<=bays;i++){ let px=Math.round(x0+i*bw)-2; px=Math.max(x0,Math.min(x1-5,px)); pillar(ctx,px,yT+9,5,wh-9,b.col); }
+  // beam: bracket row (dougong) + painted band (caihua)
+  P(ctx,x0-1,yT,w+2,9,OUT); P(ctx,x0,yT+1,w,3,darken(b.beam,0.6));
+  for(let xx=x0+1;xx<x1-3;xx+=6){ P(ctx,xx,yT+1,4,1,'#3aa070'); P(ctx,xx+1,yT+2,2,2,b.col); P(ctx,xx+1,yT+2,1,1,darken(b.col,1.3)); }
+  P(ctx,x0,yT+5,w,3,b.beam); P(ctx,x0,yT+5,w,1,darken(b.beam,1.3));
+  for(let xx=x0+3;xx<x1-7;xx+=12){ P(ctx,xx,yT+5,7,3,GOLD_D); P(ctx,xx+1,yT+5,5,3,'#3aa0b0'); P(ctx,xx+2,yT+6,3,1,'#fff4d8'); if (xx+8<x1-2) P(ctx,xx+8,yT+6,2,1,'#7ad0a0'); }
+  P(ctx,x0,yT+8,w,1,GOLD_D);
+  if (b.lanterns && !upper) for(let i=1;i<bays;i++) lantern(ctx,Math.round(x0+i*bw),yT+9);
+  if (!upper && dx!==null && b.type==='shop'){ awning(ctx,dx-Math.round(bw/2)+3,Math.round(bw)-6,yT+12,b.awningC);
+    const pw=Math.min(Math.round(bw)-2,28); P(ctx,dx-pw/2-1,yT,pw+2,9,OUT); P(ctx,dx-pw/2,yT+1,pw,7,'#2a2a48'); P(ctx,dx-pw/2,yT+1,pw,1,GOLD); P(ctx,dx-pw/2,yT+7,pw,1,GOLD_D);
+    for(let k=0;k<Math.floor((pw-4)/5);k++) glyph(ctx,dx-pw/2+3+k*5,yT+2,GOLD); }
   return dx;
 }
 function drawHouse(ctx,b){
   const w=b.w, x0=-Math.floor(w/2), x1=x0+w;
-  stoneBase(null,ctx,x0-3,-6,w+6,6);
-  const yB=-6, yT=yB-b.wallH;
+  // stone terrace with a visible top surface
+  P(ctx,x0-5,-PLAT,w+10,PLAT,OUT); P(ctx,x0-4,-PLAT+1,w+8,2,'#dcd6c8'); P(ctx,x0-4,-PLAT+3,w+8,PLAT-4,STONE);
+  for(let xx=x0-1;xx<x1+4;xx+=8) P(ctx,xx,-PLAT+3,1,PLAT-4,darken(STONE,0.72)); P(ctx,x0-4,-2,w+8,1,darken(STONE,0.7));
+  const yB=-PLAT, yT=yB-b.wallH;
   const dx=wallSection(ctx,x0,yB,w,b.wallH,b,false);
-  if (dx!==null){ P(ctx,dx-11,-4,22,4,OUT); P(ctx,dx-10,-3,20,2,STONE_L); }
-  if (b.sign && dx!==null){ const sx=Math.max(x0+6,Math.min(x1-6,dx+(dx<0?15:-15))); P(ctx,sx,yT+7,1,3,OUT); box(ctx,sx-4,yT+10,9,18,b.signColor); for(let k=0;k<3;k++) P(ctx,sx-1,yT+13+k*5,3,3,'#f8e070'); }
-  if (b.plant && dx!==null){ const px=Math.max(x0+6,Math.min(x1-6,dx+(dx<0?-17:17))); box(ctx,px-4,-13,9,7,'#c06a3a'); P(ctx,px-3,-12,7,1,'#e08a5a'); disc(ctx,px,-17,6,OUT); disc(ctx,px,-17,5,'#3aa848'); disc(ctx,px-1,-18,3,'#58c060'); P(ctx,px-2,-20,2,1,'#90e080'); }
+  if (dx!==null) for(let k=0;k<3;k++){ const sw=16+2*k, sy=-PLAT+1+k*2; P(ctx,dx-sw/2-1,sy,sw+2,2,OUT); P(ctx,dx-sw/2,sy,sw,1,STONE_L); P(ctx,dx-sw/2,sy+1,sw,1,darken(STONE,0.86)); }
   pagodaRoof(null,ctx,x0,x1,yT,b.roofH,b.roof,Math.round(w*0.2),b.eave);
   if (b.tiers===2){
     const xi0=x0+10, w2=w-20, yB2=-b.base2;
     wallSection(ctx,xi0,yB2,w2,b.wh2,b,true);
+    if (b.laundry && b.type!=='shop') laundry(ctx,xi0+3,xi0+w2-3,yB2-b.wh2+12);
     railing(null,ctx,xi0-4,yB2-8,w2+8,b.col);
     pagodaRoof(null,ctx,xi0,xi0+w2,yB2-b.wh2,b.rh2,b.roof,Math.round(w2*0.2),9);
   }
+  if (b.type==='inn') shopFlag(ctx,x1+3,-(PLAT+b.wallH+6),18,b.flagC);
+  // clutter in front, away from the door
+  const kinds=b.type==='shop'?['veg','veg','crates','jars','barrel']:['crates','barrel','jars','firewood','bonsai','bonsai','bench','broom'];
+  for (let i=0;i<b.clutterN;i++){ const cx=i%2===0?x0+7:x1-7; if (dx!==null && Math.abs(cx-dx)<18) continue; clutter(ctx,cx,pick(kinds)); }
 }
 function drawPagoda(ctx){ stoneBase(null,ctx,-44,-8,88,8); let y=-8, w=68;
   for(let t=0;t<5;t++){ const wh=t===0?26:17, x0=-Math.round(w/2);
@@ -731,8 +837,8 @@ function fillRow(bx,bw,baseY,front){
     if (rem<80){ if (rem>30 && chance(0.85)) placeStatic(pick(roundDescs),x+rem/2,baseY+rnd(0,6)); break; }
     if (chance(0.07)){ placeStatic(pick(treeDescs),x+20,baseY+rnd(0,6)); x+=40; continue; }
     if (chance(0.04)){ placeStatic(pick([wellDesc,shrineDesc]),x+18,baseY+rnd(0,6)); x+=36; continue; }
-    const hse=genHouse(front); const maxW=rem-2*hse.eave-2; if (hse.w>maxW){ hse.w=Math.max(56,maxW); hse.bays=Math.max(2,Math.round(hse.w/26)); }
-    const d=withShadow(A.addUnit(hse.w+2*hse.eave+10,hse.H,ctx=>drawHouse(ctx,hse)),{t:'b',w:hse.w+6,h:hse.H});
+    const hse=genHouse(front); const maxW=rem-2*hse.eave-2; if (hse.w>maxW){ hse.w=Math.max(56,maxW); hse.bays=Math.max(2,Math.round(hse.w/28)); }
+    const d=withShadow(A.addUnit(hse.w+2*hse.eave+22,hse.H,ctx=>drawHouse(ctx,hse)),{t:'b',w:hse.w+10,h:hse.H});
     placeStatic(d,x+hse.w/2+hse.eave,baseY+rndi(0,2)); x+=hse.w+2*hse.eave+rndi(0,4);
   }
 }
@@ -833,7 +939,7 @@ const ringDesc=D.addUnit(60,60,drawRing); const ringRecs=[]; for(let i=0;i<5;i++
 buildPalette();
 const groundCanvas=drawGround();
 const groundLayer=new Layer(makeTexture(groundCanvas),1); groundLayer.set(0,W/2,0,0,{u:0,v:0,uw:1,vh:1,w:W,h:H,oy:0},false,1); groundLayer.commit(); scene.add(groundLayer.mesh);
-statics.build(scene); dyn.build(scene,true);
+statics.build(scene,true); dyn.build(scene,true);
 const shadows=new ShadowLayer(people.length); scene.add(shadows.mesh);
 window.__waldo={people};   // handy for debugging in the console
 
