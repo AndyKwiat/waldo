@@ -73,10 +73,13 @@ city.cam = (pos, target) => placeCam(pos, target);
 const vmat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const L = W.layout();
 const tex = W.groundTexture();
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(W.WX, W.WZ), new THREE.MeshLambertMaterial({ map: tex }));
+// Flat ground layers are only centimetres apart, far below depth-buffer precision at city distances, so each
+// layer gets a polygon offset (in depth units, so it holds at any distance): outer grass < painted ground < ribbons.
+const layer = (n) => ({ polygonOffset: true, polygonOffsetFactor: -n, polygonOffsetUnits: -4 * n });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(W.WX, W.WZ), new THREE.MeshLambertMaterial({ map: tex, ...layer(1) }));
 ground.rotation.x = -Math.PI / 2; ground.position.set(W.WX / 2, 0, W.WZ / 2); ground.receiveShadow = true; scene.add(ground);
-const outer = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshLambertMaterial({ color: "#5fae44" }));
-outer.rotation.x = -Math.PI / 2; outer.position.set(W.WX / 2, -0.05, W.WZ / 2); scene.add(outer);
+const outer = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshLambertMaterial({ color: "#5fae44", ...layer(-1) }));
+outer.rotation.x = -Math.PI / 2; outer.position.set(W.WX / 2, -0.3, W.WZ / 2); scene.add(outer);
 const mountains = new THREE.Mesh(W.mountainGeometry(), vmat); mountains.receiveShadow = true; scene.add(mountains);
 /** Flat ribbon following f(x) (river, roads) — used to carry the river and roads past the painted ground into the haze. */
 function ribbon(x0, x1, zc, hw, y, color, opts = {}) {
@@ -84,9 +87,9 @@ function ribbon(x0, x1, zc, hw, y, color, opts = {}) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, ...opts })); m.receiveShadow = true; scene.add(m); return m;
 }
-for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) { ribbon(a, b, W.RIVER.zc, W.RIVER.hw + 5, 0.02, "#e8d8a0"); ribbon(a, b, W.RIVER.zc, W.RIVER.hw, 0.04, "#3a8ac8"); }
-for (const r of W.ROADS) if (r.w > r.d) for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) ribbon(a, b, () => r.z + r.d / 2, r.d / 2, 0.03, "#c8a878");
-{ const r = W.ROADS[0]; const g = new THREE.Mesh(new THREE.PlaneGeometry(r.w, 3000), new THREE.MeshLambertMaterial({ color: "#c8a878" })); g.rotation.x = -Math.PI / 2; g.position.set(r.x + r.w / 2, 0.03, W.WZ + 1500); scene.add(g); }
+for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) { ribbon(a, b, W.RIVER.zc, W.RIVER.hw + 5, 0.02, "#e8d8a0", layer(2)); ribbon(a, b, W.RIVER.zc, W.RIVER.hw, 0.04, "#3a8ac8", layer(4)); }
+for (const r of W.ROADS) if (r.w > r.d) for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) ribbon(a, b, () => r.z + r.d / 2, r.d / 2, 0.03, "#c8a878", layer(3));
+{ const r = W.ROADS[0]; const g = new THREE.Mesh(new THREE.PlaneGeometry(r.w, 3000), new THREE.MeshLambertMaterial({ color: "#c8a878", ...layer(3) })); g.rotation.x = -Math.PI / 2; g.position.set(r.x + r.w / 2, 0.03, W.WZ + 1500); scene.add(g); }
 const hills = new THREE.Mesh(W.hillGeometry(L.bumps), vmat); hills.receiveShadow = true; hills.castShadow = true; scene.add(hills);
 { // translucent river surface
   const pos = [], idx = []; for (let x = -3000, i = 0; x <= W.WX + 3000; x += 4, i++) { const zc = W.RIVER.zc(x); pos.push(x, 0.25, zc - W.RIVER.hw, x, 0.25, zc + W.RIVER.hw); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
