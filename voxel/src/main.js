@@ -51,7 +51,14 @@ const VIEWS = {
   paddies: () => [[W.GATE_X - 160, 70, W.WALL_S + 150], [W.GATE_X - 160, 0, W.WALL_S + 55]],
   pagoda: () => { const b = W.block(...W.PAGODA_BLOCK); return [[b.x + 120, 80, b.z + 170], [b.x + 42, 10, b.z + 40]]; },
 };
-function setView(name) { const v = VIEWS[name] ?? VIEWS.town; const [p, t] = v(); camera.position.set(...p); controls.target.set(...t); followed = null; controls.update(); }
+// small camera-view buttons (bottom-left); "fort" is an alias of "palace" so it gets no button
+const viewBar = document.getElementById("views");
+for (const name of Object.keys(VIEWS).filter((n) => n !== "fort")) {
+  const b = document.createElement("button"); b.textContent = name; b.dataset.view = name;
+  b.onclick = () => setView(name); viewBar.appendChild(b);
+}
+function setView(name) {
+  for (const b of viewBar.children) b.classList.toggle("on", b.dataset.view === name); const v = VIEWS[name] ?? VIEWS.town; const [p, t] = v(); camera.position.set(...p); controls.target.set(...t); followed = null; controls.update(); }
 city.view = setView;
 city.cam = (pos, target) => { camera.position.set(...pos); controls.target.set(...target); followed = null; controls.update(); };
 

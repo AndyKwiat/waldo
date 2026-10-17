@@ -15,6 +15,9 @@
   #census{color:#c8d4ff;font-size:9px !important}
   #info{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:14px 22px;font-size:10px;line-height:1.9;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;min-width:260px}
   #info .nm{font-size:13px;color:#ffd84a;text-shadow:2px 2px 0 #10183a} #info .tt{color:#c8d4ff} #info .ac{color:#fff}
+  #views{position:fixed;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:4px;max-width:min(560px,calc(100vw - 180px))}
+  #views button{font:8px 'Press Start 2P',ui-monospace,monospace;color:#fff;background:linear-gradient(#3e58d0,#1c2a80);border:2px solid #f8f8f8;border-radius:4px;padding:5px 7px;cursor:pointer;box-shadow:0 0 0 2px #10183a;text-transform:uppercase}
+  #views button:hover{color:#ffd84a} #views button.on{color:#ffd84a;border-color:#ffd84a}
   #stats{position:fixed;bottom:10px;right:12px;color:#fff;font:11px monospace;text-shadow:1px 1px 0 #000;pointer-events:none}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#10183a;color:#fff;font-size:16px;z-index:5}
 </style>
@@ -30,6 +33,7 @@
   <p id="census"></p>
 </div>
 <div id="info" class="win"></div>
+<div id="views"></div>
 <div id="stats"></div>
 <script type="module" src="./src/main.js"></script>
 </body>

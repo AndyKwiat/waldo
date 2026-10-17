@@ -14,6 +14,7 @@ bun run models              # rebuild every model through Voxer → models/*.jso
 
 **Controls:** left-drag orbit · right-drag pan · scroll zoom · WASD move · click someone to follow them
 (orbiting keeps following; right-drag, WASD or Esc stops).
+**Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
 **URL params:** `?view=town|overview|city|district|alley|plaza|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
 fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 
