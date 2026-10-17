@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "voxer": {
+      "command": "sh",
+      "args": ["~/voxer/mcp/run.sh"]
+    }
+  }
+}

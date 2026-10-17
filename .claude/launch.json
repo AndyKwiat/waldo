@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "voxel-city", "runtimeExecutable": "bun", "runtimeArgs": ["voxel/scripts/serve.ts"], "port": 3010 }
+  ]
+}

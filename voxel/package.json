@@ -1,0 +1,13 @@
+{
+  "name": "jade-river-voxel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun scripts/serve.ts",
+    "models": "bun scripts/build-models.ts",
+    "shot": "bun scripts/shot.ts"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  }
+}
