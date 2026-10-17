@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Where's Waldo? — Pixel Kingdom</title>
+<title>Jade River City</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <style>
@@ -13,11 +13,9 @@
   #hud{position:fixed;top:16px;left:16px;padding:14px 16px;max-width:280px;user-select:none}
   #hud h1{margin:0 0 10px;font-size:14px;color:#ffd84a;text-shadow:2px 2px 0 #10183a;letter-spacing:1px}
   #hud p{margin:6px 0;font-size:9px;line-height:1.8;text-shadow:1px 1px 0 #10183a}
-  #hud ul{margin:8px 0 0;padding:0;list-style:none}
-  #hud li{font-size:10px;margin:7px 0;text-shadow:1px 1px 0 #10183a}
-  #hud li.found{color:#7dff8a;text-decoration:line-through}
-  #hud li .sw{display:inline-block;width:10px;height:10px;border:2px solid #fff;vertical-align:-3px;margin-right:8px}
-  #msg{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);padding:16px 24px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap}
+  #census{color:#c8d4ff;font-size:9px}
+  #info{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:14px 22px;font-size:10px;line-height:1.9;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;min-width:260px}
+  #info .nm{font-size:13px;color:#ffd84a;text-shadow:2px 2px 0 #10183a} #info .tt{color:#c8d4ff} #info .ac{color:#fff}
   #stats{position:fixed;bottom:10px;right:12px;color:#fff;font:11px monospace;text-shadow:1px 1px 0 #000;pointer-events:none}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#10183a;color:#fff;font-size:16px}
 </style>
@@ -25,12 +23,11 @@
 <body>
 <div id="loading">NOW LOADING...</div>
 <div id="hud" class="win">
-  <h1>WHERE'S WALDO?</h1>
-  <p>A walled city in the mountains. Scroll to zoom, drag to pan, click someone to identify them.</p>
-  <ul id="list"></ul>
-  <p id="hint" style="color:#c8d4ff;font-size:8px"></p>
+  <h1>JADE RIVER CITY</h1>
+  <p>Scroll to zoom, drag to pan.<br>Click anyone to follow them.</p>
+  <p id="census"></p>
 </div>
-<div id="msg" class="win"></div>
+<div id="info" class="win"></div>
 <div id="stats"></div>
 
 <script type="importmap">
@@ -379,6 +376,8 @@ function drawPerson(ctx,p,f){
     case 'fish': h.ellipse(hx+1,hy+1,3.8,1.6,'#a8d0e8'); h.poly([[hx+4.5,hy+1],[hx+6.5,hy-1],[hx+6.5,hy+3]],'#a8d0e8'); break;
     case 'scroll': h.rect(hx-1.5,hy-3,3,7,'#fff4d8',0); h.line(hx-1.5,hy-3,hx+1.5,hy-3,'#8a5a32',1); h.line(hx-1.5,hy+4,hx+1.5,hy+4,'#8a5a32',1); break;
     case 'drum': h.ellipse(hx,hy+1,4,3,'#e04a3a'); h.line(hx-4,hy+1,hx+4,hy+1,'#ffd050',1); break;
+    case 'rod': h.line(hx+1,hy,hx+15,shY-20,OUT,2.2); h.line(hx+1,hy,hx+15,shY-20,'#c89050',1); P(ctx,hx+15,shY-20,1,-(shY-20)-3,'#e8f0f8'); P(ctx,hx+14,-3,3,2,'#e04a3a'); break;
+    case 'bow': ctx.strokeStyle=OUT; ctx.lineWidth=2.4; ctx.beginPath(); ctx.arc(hx-1,hy-3,8,-PI*0.45,PI*0.45); ctx.stroke(); ctx.strokeStyle='#a0603a'; ctx.lineWidth=1.2; ctx.stroke(); P(ctx,hx+1,hy-10,1,14,'#e8e0d0'); break;
     case 'kite': h.line(hx,hy,hx+8,topY-10,'#8a8a96',0.8); h.poly([[hx+8,topY-16],[hx+13,topY-10],[hx+8,topY-4],[hx+3,topY-10]],pick(['#e04a3a','#f0b830','#2aa0a0'])); break;
   }
   ctx.restore();
@@ -609,7 +608,7 @@ function drawHouse(ctx,b){
   P(ctx,x0-5,-PLAT,w+10,PLAT,OUT); P(ctx,x0-4,-PLAT+1,w+8,2,'#dcd6c8'); P(ctx,x0-4,-PLAT+3,w+8,PLAT-4,STONE);
   for(let xx=x0-1;xx<x1+4;xx+=8) P(ctx,xx,-PLAT+3,1,PLAT-4,darken(STONE,0.72)); P(ctx,x0-4,-2,w+8,1,darken(STONE,0.7));
   const yB=-PLAT, yT=yB-b.wallH;
-  const dx=wallSection(ctx,x0,yB,w,b.wallH,b,false);
+  const dx=wallSection(ctx,x0,yB,w,b.wallH,b,false); b.doorX=dx;
   if (dx!==null) for(let k=0;k<3;k++){ const sw=16+2*k, sy=-PLAT+1+k*2; P(ctx,dx-sw/2-1,sy,sw+2,2,OUT); P(ctx,dx-sw/2,sy,sw,1,STONE_L); P(ctx,dx-sw/2,sy+1,sw,1,darken(STONE,0.86)); }
   pagodaRoof(null,ctx,x0,x1,yT,b.roofH,b.roof,Math.round(w*0.2),b.eave);
   if (b.tiers===2){
@@ -727,7 +726,106 @@ function drawCart(ctx,c){ const h=mk(ctx);
 function drawJars(ctx){ const h=mk(ctx); for(const [x,y] of [[-7,0],[6,0],[0,-8]]){ h.shape('#a0603a',()=>{ctx.moveTo(x-4,y);ctx.quadraticCurveTo(x-7,y-6,x-4,y-11);ctx.lineTo(x+4,y-11);ctx.quadraticCurveTo(x+7,y-6,x+4,y);}); P(ctx,x-3,y-8,1,4,'#d08a5a'); h.line(x-4,y-11,x+4,y-11,'#3a9ab0',2); } }
 function drawHaystack(ctx){ const h=mk(ctx); h.shape('#f0c040',()=>{ctx.moveTo(-16,0);ctx.quadraticCurveTo(-14,-24,0,-28);ctx.quadraticCurveTo(14,-24,16,0);}); ctx.fillStyle='#c8962a'; for(let x=-12;x<12;x+=4) ctx.fillRect(x,-20+Math.abs(x)*0.6,1,16); P(ctx,-6,-24,5,1,'#fff090'); }
 function drawRock(ctx){ ellR(ctx,0,-6,13,7,OUT); ellR(ctx,0,-6,12,6,STONE); ellR(ctx,-2,-8,8,4,STONE_L); P(ctx,-5,-11,3,1,'#f4f0e8'); P(ctx,3,-2,7,1,darken(STONE,0.72)); }
-function drawRing(ctx){ ctx.strokeStyle='#e04a3a'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,-22,26,0,TAU); ctx.stroke(); ctx.strokeStyle='#fff4d8'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(0,-22,26,0,TAU); ctx.stroke(); }
+
+// ------------------------------------------------------------------ VEHICLES, CRITTERS, RIVER LIFE
+function cutDisc(ctx,cx,cy,r){ ctx.save(); ctx.globalCompositeOperation='destination-out'; disc(ctx,cx,cy,r,'#000'); ctx.restore(); }
+function spoke(ctx,cx,cy,a,r0,r1,c){ for(let k=r0;k<=r1;k+=0.5) P(ctx,cx+Math.cos(a)*k,cy+Math.sin(a)*k,1,1,c); }
+function wheel(ctx,cx,cy,r,f,tire='#4a3020'){ disc(ctx,cx,cy,r+1,OUT); disc(ctx,cx,cy,r,tire); disc(ctx,cx-1,cy-1,r-1,darken(tire,1.4)); disc(ctx,cx,cy,r-1,tire); cutDisc(ctx,cx,cy,r-2);
+  for(let k=0;k<4;k++) spoke(ctx,cx,cy,f*PI/16+k*PI/4,-(r-2),r-2,WOOD_L);
+  disc(ctx,cx,cy,2,OUT); P(ctx,cx,cy,1,1,GOLD); }
+function seatedFigure(ctx,x,y,p){ // upper body of a passenger/driver, feet at y
+  P(ctx,x-4,y-10,9,10,OUT); P(ctx,x-3,y-9,7,8,p.top); P(ctx,x+2,y-9,2,8,darken(p.top,0.75));
+  disc(ctx,x,y-15,4,OUT); disc(ctx,x,y-15,3,p.skin); P(ctx,x+1,y-15,2,3,darken(p.skin,0.86)); P(ctx,x-3,y-19,7,2,p.hair); P(ctx,x+1,y-16,1,2,OUT);
+  if (p.hat===12){ for(let r=0;r<5;r++) P(ctx,x-1-r*2,y-24+r,3+r*4,1,r===4?OUT:'#e0c080'); } }
+function drawRickshaw(ctx,v,f){ const h=mk(ctx);
+  h.poly([[-27,-21],[-28,-40],[-21,-47],[-9,-45],[-7,-39],[-15,-38],[-19,-23]],v.hood);
+  P(ctx,-25,-36,3,12,darken(v.hood,1.3));
+  seatedFigure(ctx,-14,-21,v.pas);
+  box(ctx,-25,-23,19,10,v.color); P(ctx,-24,-22,17,1,darken(v.color,1.35)); P(ctx,-24,-15,17,1,darken(v.color,0.7)); P(ctx,-19,-20,6,3,GOLD_D);
+  P(ctx,-10,-22,4,7,OUT); P(ctx,-9,-21,2,6,v.pas.bottom); P(ctx,-11,-15,12,2,OUT);
+  P(ctx,-8,-19,30,2,OUT); P(ctx,-7,-18,28,1,WOOD_L);
+  wheel(ctx,-17,-10,9,f);
+  ctx.save(); ctx.translate(17,0); drawPerson(ctx,v.puller,f); ctx.restore();
+  P(ctx,18,-19,8,2,OUT); P(ctx,19,-18,6,1,WOOD_L); }
+function drawSedan(ctx,v,f){
+  ctx.save(); ctx.translate(-21,0); drawPerson(ctx,v.b2,(f+2)%4); ctx.restore();
+  P(ctx,-32,-28,64,3,OUT); P(ctx,-31,-27,62,1,WOOD_L);
+  box(ctx,-11,-48,22,27,v.color); P(ctx,-10,-47,20,1,darken(v.color,1.35)); P(ctx,7,-46,3,24,darken(v.color,0.72));
+  box(ctx,-6,-43,12,10,PAPER); P(ctx,-5,-42,10,4,v.curtain); P(ctx,-1,-38,2,4,v.curtain); P(ctx,-5,-42,10,1,darken(v.curtain,1.3));
+  P(ctx,-10,-23,20,1,GOLD); P(ctx,-10,-29,20,1,GOLD_D);
+  pagodaRoof(null,ctx,-11,11,-48,8,v.roof,4,5); disc(ctx,0,-58,2,OUT); P(ctx,0,-58,1,1,GOLD);
+  P(ctx,-14,-44,1,6,GOLD); P(ctx,13,-44,1,6,GOLD);
+  ctx.save(); ctx.translate(21,0); drawPerson(ctx,v.b1,f); ctx.restore();
+  P(ctx,15,-28,18,3,OUT); P(ctx,16,-27,16,1,WOOD_L); }
+function drawOxcart(ctx,v,f){ const h=mk(ctx); const L=[1,-1,1,-1][f];
+  if (v.load==='hay'){ const cl=[[-27,-25,6],[-18,-27,7],[-9,-25,6],[-19,-33,5]]; for(const [x,y,r] of cl) disc(ctx,x,y,r+1,OUT); for(const [x,y,r] of cl) disc(ctx,x,y,r,'#f0c040'); for(const [x,y,r] of cl) disc(ctx,x-1,y-2,r-3,'#fff090'); }
+  else if (v.load==='jars'){ for(const [x,c] of [[-27,'#2f6fa8'],[-19,'#a0603a'],[-11,'#3aa060']]){ disc(ctx,x,-27,5,OUT); disc(ctx,x,-27,4,c); P(ctx,x-2,-29,2,2,darken(c,1.5)); P(ctx,x-2,-33,5,2,OUT); } }
+  else { for(const [x,y] of [[-27,-25],[-17,-25],[-22,-31],[-10,-25]]){ box(ctx,x-5,y-5,10,8,'#d8b078'); P(ctx,x-1,y-6,2,2,OUT); P(ctx,x-4,y-4,4,1,'#f0d8a8'); } }
+  box(ctx,-35,-22,33,9,WOOD_L); P(ctx,-34,-21,31,1,'#d8a868'); for(let x=-28;x<-3;x+=7) P(ctx,x,-20,1,6,WOOD);
+  seatedFigure(ctx,-4,-21,v.driver);
+  P(ctx,-4,-19,17,2,OUT); P(ctx,-3,-18,15,1,WOOD);
+  wheel(ctx,-19,-10,9,f);
+  const oc=v.ox, od=darken(oc,0.72);
+  h.limb(15,-9,15+L*2,-1,od,2.8); h.limb(29,-9,29-L*2,-1,od,2.8);
+  h.ellipse(22,-14,11,6,oc); P(ctx,16,-18,10,2,darken(oc,1.25));
+  h.limb(18,-9,18-L*2,-1,oc,2.8); h.limb(32,-9,32+L*2,-1,oc,2.8);
+  h.line(11,-17,8,-9,OUT,2); h.line(11,-17,8,-9,oc,1); P(ctx,7,-9,2,2,OUT);
+  h.ellipse(35,-16,4.5,4.5,oc); h.rect(37,-16,5,4,darken(oc,1.25)); P(ctx,40,-15,1,1,OUT); P(ctx,35,-18,1,1,OUT);
+  h.line(32,-20,28,-25,OUT,2.4); h.line(32,-20,28,-25,'#f0e8d0',1); h.line(37,-20,41,-25,OUT,2.4); h.line(37,-20,41,-25,'#f0e8d0',1);
+  P(ctx,12,-21,20,2,OUT); P(ctx,13,-20,18,1,WOOD); }
+function drawHandcart(ctx,v,f){ const h=mk(ctx);
+  ctx.save(); ctx.translate(-13,0); drawPerson(ctx,v.pusher,f); ctx.restore();
+  P(ctx,-9,-16,16,2,OUT); P(ctx,-8,-15,14,1,WOOD_L);
+  h.poly([[4,-21],[27,-21],[23,-11],[7,-11]],WOOD_L); P(ctx,6,-20,20,1,'#d8a868');
+  if (v.load==='veg'){ for(let i=0;i<5;i++){ const c=pick([['#58c060','#2e9a44'],['#f07a2a','#c85a1a'],['#e04a3a','#a02a2a']]); disc(ctx,8+i*4,-23-(i%2)*2,3,OUT); disc(ctx,8+i*4,-23-(i%2)*2,2,c[0]); P(ctx,7+i*4,-24-(i%2)*2,1,1,'#ffffff'); } }
+  else { box(ctx,7,-29,9,8,'#d8b078'); box(ctx,15,-28,9,7,'#c8a060'); P(ctx,10,-30,2,2,OUT); }
+  wheel(ctx,21,-7,6,f); P(ctx,7,-11,2,9,OUT); }
+function drawCat(ctx,c,f,sit){ const h=mk(ctx); const col=c.color, dk=c.stripe;
+  if (!sit){ const L=[1,-1,1,-1][f];
+    h.limb(-4,-4,-4+L*1.5,-1,darken(col,0.8),1.8); h.limb(3,-4,3-L*1.5,-1,darken(col,0.8),1.8);
+    h.ellipse(0,-5.5,5.5,2.8,col); h.limb(-2,-4,-2-L*1.5,-1,col,1.8); h.limb(5,-4,5+L*1.5,-1,col,1.8);
+    h.line(-5,-6,-8,-10,OUT,2.6); h.line(-8,-10,-7,-14,OUT,2.6); h.line(-5,-6,-8,-10,col,1.1); h.line(-8,-10,-7,-14,col,1.1);
+    h.circle(6,-8,2.8,col); h.poly([[4.3,-10],[4.8,-13.5],[6.5,-10.6]],col); h.poly([[6.8,-10.6],[8.4,-13.5],[8.8,-9.6]],col); P(ctx,7,-9,1,1,OUT);
+    if (dk){ P(ctx,-2,-8,1,2,dk); P(ctx,0,-8,1,2,dk); P(ctx,2,-8,1,2,dk); }
+    if (c.patch) P(ctx,3,-5,4,2,'#fff4d8');
+  } else {
+    h.ellipse(-1,-5,4.5,5,col); if (dk){ P(ctx,-3,-8,1,2,dk); P(ctx,-1,-9,1,2,dk); } if (c.patch) P(ctx,0,-5,3,3,'#fff4d8');
+    h.circle(1,-11,3.3,col); h.poly([[-1.3,-13],[-0.7,-16.6],[1,-14]],col); h.poly([[2,-14],[3.6,-16.6],[4.2,-12.6]],col); P(ctx,0,-12,1,1,OUT); P(ctx,2,-12,1,1,OUT); P(ctx,1,-10,1,1,'#f08ab0');
+    if (f===0){ h.line(-5,-2,-9,-2,OUT,2.6); h.line(-9,-2,-10,-5,OUT,2.6); h.line(-5,-2,-9,-2,col,1.1); h.line(-9,-2,-10,-5,col,1.1); }
+    else { h.line(-5,-2,-9,-4,OUT,2.6); h.line(-9,-4,-8,-8,OUT,2.6); h.line(-5,-2,-9,-4,col,1.1); h.line(-9,-4,-8,-8,col,1.1); }
+    P(ctx,-3,-1,2,1,col); P(ctx,1,-1,2,1,col);
+  } }
+function drawPigeon(ctx,c,f){ const body=c.body, wing=darken(body,0.8), neck='#5aa08a';
+  if (f<2){ ellR(ctx,0,-4,4,3,OUT); ellR(ctx,0,-4,3,2,body); P(ctx,-2,-5,3,1,wing); P(ctx,-6,-5,3,1,OUT); P(ctx,-5,-5,2,1,wing);
+    const hx=f===0?3:5, hy=f===0?-8:-4; disc(ctx,hx,hy,2,OUT); disc(ctx,hx,hy,1.4,darken(body,0.92)); P(ctx,hx-1,hy+1,2,1,neck); P(ctx,hx+2,hy,1,1,'#f0c8a0'); P(ctx,hx,hy-1,1,1,OUT);
+    P(ctx,-1,-1,1,1,'#e04a3a'); P(ctx,1,-1,1,1,'#e04a3a'); }
+  else { ellR(ctx,0,-6,4,2,OUT); ellR(ctx,0,-6,3,1,body); disc(ctx,4,-7,2,OUT); disc(ctx,4,-7,1.4,body); P(ctx,6,-7,1,1,'#f0c8a0'); P(ctx,-6,-6,2,1,OUT);
+    if (f===2){ for(let k=0;k<5;k++){ P(ctx,-1-k,-8-k,2,1,OUT); P(ctx,1+k*0.6,-8-k,2,1,OUT); } P(ctx,-2,-9,1,1,body); P(ctx,1,-9,1,1,body); }
+    else { for(let k=0;k<4;k++){ P(ctx,-1-k,-5+k,2,1,OUT); P(ctx,1+k*0.6,-5+k,2,1,OUT); } } } }
+function drawDuck(ctx,c,f){ const b=f%2;
+  ellR(ctx,0,-3-b,5,3,OUT); ellR(ctx,0,-3-b,4,2,c.body); P(ctx,-2,-4-b,3,1,darken(c.body,0.8)); P(ctx,-6,-5-b,2,1,OUT);
+  disc(ctx,4,-7-b,2.5,OUT); disc(ctx,4,-7-b,2,c.head); P(ctx,6,-7-b,3,1,'#f0a020'); P(ctx,4,-8-b,1,1,OUT);
+  P(ctx,-5,0,3,1,WATER_L); P(ctx,3,0,3,1,WATER_L); }
+function drawBoat(ctx,v,f){ const h=mk(ctx); const bob=[0,-1,0,1][f];
+  ctx.save(); ctx.translate(0,bob);
+  ctx.save(); ctx.translate(-19,-4); drawPerson(ctx,v.man,1); ctx.restore();
+  const tip=[-4,-2,0,-2][f]; h.line(-14,-30,tip,8,OUT,2.4); h.line(-14,-30,tip,8,WOOD_L,1);
+  if (v.cargo){ box(ctx,10,-15,9,7,'#d8b078'); box(ctx,17,-14,8,6,'#c8a060'); P(ctx,13,-16,2,2,OUT); }
+  h.shape('#d8b070',()=>{ctx.moveTo(-9,-8);ctx.quadraticCurveTo(2,-28,14,-8);});
+  for(let x=-6;x<12;x+=3) P(ctx,x,-16+Math.abs(x-2)*0.5,1,6,'#a07a40');
+  h.shape('#7a4a2a',()=>{ctx.moveTo(-31,-11);ctx.lineTo(31,-11);ctx.quadraticCurveTo(27,0,18,2);ctx.lineTo(-20,2);ctx.quadraticCurveTo(-28,0,-31,-11);});
+  P(ctx,-29,-10,58,1,'#b07a44'); P(ctx,-24,-5,44,1,'#5e3a1e'); P(ctx,-20,-2,38,1,'#5e3a1e');
+  ctx.restore();
+  P(ctx,-28,3,10,1,WATER_L); P(ctx,16,3,10,1,WATER_L); P(ctx,-10,4,6,1,WATER_L); }
+function drawWaterWheel(ctx,f){ const R=20, cy=-24, a=f*PI/16;
+  P(ctx,-27,-34,5,34,OUT); P(ctx,-26,-33,3,33,WOOD); P(ctx,22,-34,5,34,OUT); P(ctx,23,-33,3,33,WOOD); P(ctx,-27,-27,54,3,OUT); P(ctx,-26,-26,52,1,WOOD_L);
+  disc(ctx,0,cy,R+1,OUT); disc(ctx,0,cy,R,'#8a5a32'); disc(ctx,-1,cy-1,R-1,'#b07a44'); disc(ctx,0,cy,R-1,'#8a5a32'); cutDisc(ctx,0,cy,R-3);
+  for(let k=0;k<4;k++) spoke(ctx,0,cy,a+k*PI/4,-(R-3),R-3,WOOD_L);
+  for(let k=0;k<8;k++){ const an=a+k*PI/4+PI/8; const px=Math.cos(an)*(R+1), py=cy+Math.sin(an)*(R+1); box(ctx,px-2,py-2,5,5,'#c08a50'); }
+  disc(ctx,0,cy,3,OUT); disc(ctx,0,cy,2,GOLD_D);
+  for(let i=0;i<9;i++) P(ctx,rndi(-14,14),rndi(-4,1),2,1,i%2?'#ffffff':WATER_L); }
+function drawArrow(ctx){ for(let r=0;r<8;r++){ P(ctx,-8+r,-14+r,17-2*r,1,OUT); if (r<7) P(ctx,-7+r,-14+r,15-2*r,1,r<2?'#fff4a0':'#ffd84a'); } P(ctx,-3,-20,7,6,OUT); P(ctx,-2,-19,5,5,'#ffd84a'); P(ctx,-2,-19,2,4,'#fff4a0'); }
+function drawTarget(ctx){ P(ctx,-1,-14,3,14,OUT); P(ctx,0,-14,1,14,WOOD); disc(ctx,0,-20,9,OUT); disc(ctx,0,-20,8,'#e8d8a0'); disc(ctx,0,-20,6,'#e04a3a'); disc(ctx,0,-20,4,'#fff4d8'); disc(ctx,0,-20,2,'#e04a3a'); P(ctx,-3,-23,2,1,'#ffffff'); }
 
 // ------------------------------------------------------------------ GROUND (tile-painted at 1 texel per unit)
 function isStreet(x,y){
@@ -738,6 +836,8 @@ function isStreet(x,y){
   const inBlockX=x>=X0+STREET && bx>=0 && bx<BW && x<W-X0-STREET, inBlockY=y>=Y0+STREET && by>=0 && by<BH && y<YT-STREET;
   return !(inBlockX&&inBlockY);
 }
+const RIVER={yc:x=>YT+94+Math.round(7*Math.sin(x/170)+4*Math.sin(x/61)), hw:20};
+const DOCKS=[760,1960], WHEEL_X=430;
 const POND = (()=>{ const b=block(0,2); return {x:b.x+214, y:b.y+92, rx:44, ry:28}; })();
 function drawGround(){
   const c=document.createElement('canvas'); c.width=W; c.height=H; const ctx=c.getContext('2d');
@@ -764,7 +864,14 @@ function drawGround(){
       for(let i=0;i<(px1-px0)/30;i++) F(rnd(px0,px1-4),rnd(y+1,y+9),4,1,WATER_L); } }
   // farm plots
   const plots=[]; for(let i=0;i<200 && plots.length<16;i++){ const w=rndi(70,150),h=rndi(40,80); const x=Math.round(rnd(10,W-w-10)), y=Math.round(rnd(Y0-30,FIELD_TOP-h-30));
-    if (overlapsCity(x,y,w,h)) continue; if (plots.some(p=>!(x+w+12<p.x||x>p.x+p.w+12||y+h+12<p.y||y>p.y+p.h+12))) continue; plots.push({x,y,w,h}); plot(x,y,w,h); }
+    if (overlapsCity(x,y,w,h) || (y+h>YT+40 && y<YT+140)) continue; if (plots.some(p=>!(x+w+12<p.x||x>p.x+p.w+12||y+h+12<p.y||y>p.y+p.h+12))) continue; plots.push({x,y,w,h}); plot(x,y,w,h); }
+  // the river: sandy banks, reeds, deep channel, sparkles, wooden docks
+  for(let x=0;x<W;x++){ const yc=RIVER.yc(x), hw=RIVER.hw;
+    F(x,yc-hw-7,1,2*hw+14,'#c8b47a'); F(x,yc-hw-5,1,2*hw+10,'#e8d8a0'); F(x,yc-hw-1,1,2*hw+2,OUT); F(x,yc-hw,1,2*hw,WATER); F(x,yc+hw-3,1,3,WATER_D);
+    for(let y=yc-6;y<=yc+6;y++) if (((x+y)&1)===0) F(x,y,1,1,WATER_D);
+    if (chance(0.12)) F(x,yc-hw-6,1,rndi(2,5),pick(['#3aa848','#58c060','#2e8a3a'])); if (chance(0.12)) F(x,yc+hw+2,1,rndi(2,5),pick(['#3aa848','#58c060','#2e8a3a'])); }
+  for(let i=0;i<420;i++){ const x=rnd(0,W-6), y=RIVER.yc(x)+rnd(-RIVER.hw+3,RIVER.hw-4); F(x,y,rndi(3,7),1,WATER_L); }
+  for(const dx of DOCKS){ const yb=RIVER.yc(dx)-RIVER.hw-7; F(dx-8,yb,16,RIVER.hw+4,OUT); F(dx-7,yb+1,14,RIVER.hw+2,WOOD_L); for(let y=yb+3;y<yb+RIVER.hw+3;y+=3) F(dx-7,y,14,1,WOOD); F(dx-8,yb+RIVER.hw+2,3,3,OUT); F(dx+5,yb+RIVER.hw+2,3,3,OUT); }
   // road from the gate
   F(SX[3]-32,0,64,Y0,PATH_D); for(let y=0,row=0;y<Y0;y+=8,row++) for(let x=SX[3]-32+(row%2?6:0);x<SX[3]+30;x+=12){ const x0=Math.max(x,SX[3]-31), x1=Math.min(x+11,SX[3]+31); F(x0,y+1,x1-x0,7,pick([PATH,PATH_V,PATH_V2])); F(x0,y+7,x1-x0,1,PATH_L); }
 
@@ -830,7 +937,8 @@ const treeDescs=[]; for(let i=0;i<16;i++){ const t={kind:pick(['round','round','
 const pineDescs=[]; for(let i=0;i<3;i++) pineDescs.push(A.addUnit(42,54,ctx=>drawTree(ctx,{kind:'pine',color:pick(GREENS)})));
 const roundDescs=[]; for(let i=0;i<4;i++) roundDescs.push(A.addUnit(42,54,ctx=>drawTree(ctx,{kind:i===3?'blossom':'round',color:pick(GREENS),fruit:chance(0.3)})));
 const wellDesc=A.addUnit(30,44,drawWell), jarsDesc=A.addUnit(30,26,drawJars), hayDesc=A.addUnit(38,32,drawHaystack), shrineDesc=A.addUnit(30,40,drawShrine), rockDesc=A.addUnit(30,20,drawRock), postDesc=withShadow(A.addUnit(22,40,drawLanternPost),{t:'e'});
-function fillRow(bx,bw,baseY,front){
+const HOUSE_RAW=[], OBST=[]; const obst=(x,y,r)=>OBST.push({x,y,r});
+function fillRow(bx,bw,baseY,front,c,r){
   let x=bx+2; const end=bx+bw-2;
   while (x<end){
     const rem=end-x;
@@ -839,7 +947,9 @@ function fillRow(bx,bw,baseY,front){
     if (chance(0.04)){ placeStatic(pick([wellDesc,shrineDesc]),x+18,baseY+rnd(0,6)); x+=36; continue; }
     const hse=genHouse(front); const maxW=rem-2*hse.eave-2; if (hse.w>maxW){ hse.w=Math.max(56,maxW); hse.bays=Math.max(2,Math.round(hse.w/28)); }
     const d=withShadow(A.addUnit(hse.w+2*hse.eave+22,hse.H,ctx=>drawHouse(ctx,hse)),{t:'b',w:hse.w+10,h:hse.H});
-    placeStatic(d,x+hse.w/2+hse.eave,baseY+rndi(0,2)); x+=hse.w+2*hse.eave+rndi(0,4);
+    const hx=x+hse.w/2+hse.eave, hb=baseY+rndi(0,2); placeStatic(d,hx,hb);
+    HOUSE_RAW.push({doorX:hx+hse.doorX, hb, front, c, r, type:hse.type, hx, w:hse.w, roofTop:hse.tiers===2? hse.base2+hse.wh2+Math.round(hse.rh2*0.45) : PLAT+hse.wallH+Math.round(hse.roofH*0.45)});
+    x+=hse.w+2*hse.eave+rndi(0,4);
   }
 }
 for(let cc=0;cc<COLS;cc++) for(let r=0;r<ROWS;r++){
@@ -851,24 +961,27 @@ for(let cc=0;cc<COLS;cc++) for(let r=0;r<ROWS;r++){
     placeStatic(rockDesc,POND.x-POND.rx-4,POND.y-8); placeStatic(rockDesc,POND.x+POND.rx-2,POND.y+POND.ry-4,true); placeStatic(pick(roundDescs),POND.x+10,POND.y+POND.ry+18);
     continue;
   }
-  fillRow(b.x,b.w,b.y+4,true); fillRow(b.x,b.w,b.y+138,false);
+  fillRow(b.x,b.w,b.y+4,true,cc,r); fillRow(b.x,b.w,b.y+138,false,cc,r);
 }
 // fortress
 placeStatic(withShadow(A.addUnit(360,230,drawGateTower),{t:'b',w:300,h:200}),FORT.x+FORT.w/2,FORT.y+10);
 placeStatic(pick(roundDescs),FORT.x+30,FORT.y+200); placeStatic(pick(roundDescs),FORT.x+FORT.w-30,FORT.y+210);
 const YARDS=[{x:FORT.x+10,y:FORT.y+20,w:120,h:220},{x:FORT.x+FORT.w-130,y:FORT.y+20,w:120,h:220}];
 // plaza
-placeStatic(A.addUnit(100,100,drawCenterPavilion),CENTER.x,CENTER.y-14);
+placeStatic(A.addUnit(100,100,drawCenterPavilion),CENTER.x,CENTER.y-14); obst(CENTER.x,CENTER.y-12,38);
 const stallSpots=[]; const stallDescs=[];
 for(let i=0;i<8;i++){ const s={c1:pick(['#c8463a','#f0b830','#2aa890','#3a9ab0','#d8683a']),goods:pick(['fruit','silk','bao','fish','lantern','pots']),lantern:chance(0.7)}; stallDescs.push(withShadow(A.addUnit(64,64,ctx=>drawStall(ctx,s)),{t:'b',w:42,h:50})); }
 const sxs=[PLAZA.x+55,PLAZA.x+135,PLAZA.x+PLAZA.w-135,PLAZA.x+PLAZA.w-55];
-for(const y of [PLAZA.y+40,PLAZA.y+PLAZA.h-60]) for(const x of sxs){ placeStatic(pick(stallDescs),x,y); stallSpots.push({x,y}); }
+for(const y of [PLAZA.y+40,PLAZA.y+PLAZA.h-60]) for(const x of sxs){ placeStatic(pick(stallDescs),x,y); stallSpots.push({x,y}); obst(x-10,y+3,11); obst(x+10,y+3,11); }
 const cartDescs=[A.addUnit(58,36,ctx=>drawCart(ctx,{hay:true})),A.addUnit(58,36,ctx=>drawCart(ctx,{hay:false}))];
-placeStatic(cartDescs[0],PLAZA.x+250,PLAZA.y+20); placeStatic(cartDescs[1],PLAZA.x+PLAZA.w-250,PLAZA.y+PLAZA.h-40,true);
+placeStatic(cartDescs[0],PLAZA.x+250,PLAZA.y+20); placeStatic(cartDescs[1],PLAZA.x+PLAZA.w-250,PLAZA.y+PLAZA.h-40,true); obst(PLAZA.x+250,PLAZA.y+21,14); obst(PLAZA.x+PLAZA.w-250,PLAZA.y+PLAZA.h-39,14);
 placeStatic(jarsDesc,PLAZA.x+20,PLAZA.y+PLAZA.h-20); placeStatic(jarsDesc,PLAZA.x+PLAZA.w-20,PLAZA.y+20);
-for (const [x,y] of [[PLAZA.x+12,PLAZA.y+12],[PLAZA.x+PLAZA.w-12,PLAZA.y+12],[PLAZA.x+12,PLAZA.y+PLAZA.h-8],[PLAZA.x+PLAZA.w-12,PLAZA.y+PLAZA.h-8],[CENTER.x-90,CENTER.y],[CENTER.x+90,CENTER.y]]) placeStatic(postDesc,x,y);
+for (const [x,y] of [[PLAZA.x+12,PLAZA.y+12],[PLAZA.x+PLAZA.w-12,PLAZA.y+12],[PLAZA.x+12,PLAZA.y+PLAZA.h-8],[PLAZA.x+PLAZA.w-12,PLAZA.y+PLAZA.h-8],[CENTER.x-90,CENTER.y],[CENTER.x+90,CENTER.y]]){ placeStatic(postDesc,x,y); obst(x,y,5); }
 placeStatic(hayDesc,FORT.x+40,FORT.y+60); placeStatic(hayDesc,FORT.x+FORT.w-50,FORT.y+120); placeStatic(jarsDesc,FORT.x+120,FORT.y+150); placeStatic(jarsDesc,FORT.x+FORT.w-110,FORT.y+40); placeStatic(cartDescs[0],FORT.x+FORT.w-60,FORT.y+200,true);
-for(let i=0;i<24;i++){ let x,y,tries=0; do { const c=rndi(0,COLS), r=rndi(0,ROWS-1); x=SX[c]+rnd(-35,35); y=SY[r]+rnd(60,260); } while ((!isStreet(x,y) || inRect(x,y,PLAZA) || inRect(x,y-40,FORT)) && ++tries<20); if (tries<20) placeStatic(pick([jarsDesc,cartDescs[0],cartDescs[1],hayDesc,postDesc,postDesc,rockDesc]),x,y); }
+for(let i=0;i<24;i++){ let x,y,tries=0; do { const c=rndi(0,COLS), r=rndi(0,ROWS-1); x=SX[c]+rnd(-35,35); y=SY[r]+rnd(60,260); } while ((!isStreet(x,y) || inRect(x,y,PLAZA) || inRect(x,y-40,FORT)) && ++tries<20); if (tries<20){ const dsc=pick([jarsDesc,cartDescs[0],cartDescs[1],hayDesc,postDesc,postDesc,rockDesc]); placeStatic(dsc,x,y); obst(x,y+1,dsc===postDesc?5:dsc===jarsDesc?9:dsc===rockDesc?10:13); } }
+const targetDesc=A.addUnit(24,34,drawTarget); for(let i=0;i<4;i++){ placeStatic(targetDesc,FORT.x+FORT.w-36,FORT.y+60+i*26); obst(FORT.x+FORT.w-36,FORT.y+61+i*26,6); }
+{ const mill=genHouse(true); mill.w=60; mill.tiers=1; mill.type='home'; mill.bays=2; mill.H=PLAT+mill.wallH+mill.roofH+12; mill.clutterN=2;
+  placeStatic(withShadow(A.addUnit(mill.w+2*mill.eave+22,mill.H,ctx=>drawHouse(ctx,mill)),{t:'b',w:mill.w+10,h:mill.H}),WHEEL_X+64,RIVER.yc(WHEEL_X+64)-RIVER.hw-9); }
 // walls
 const wallDesc=withShadow(A.addUnit(200,48,ctx=>drawWallSeg(ctx,200)),{t:'b',w:200,h:40}), sideDesc=withShadow(A.addUnit(34,200,ctx=>drawWallSide(ctx,200)),{t:'none'});
 const towerDesc=withShadow(A.addUnit(64,124,drawWatchtower),{t:'b',w:44,h:110}), gateDesc=withShadow(A.addUnit(176,136,drawGate),{t:'b',w:100,h:120});
@@ -878,70 +991,182 @@ for(let y=Y0-30;y<YT+30;y+=200){ placeStatic(sideDesc,X0-15,y); placeStatic(side
 for(const [x,y] of [[X0-15,Y0-30],[W-X0+15,Y0-30],[X0-15,YT+8],[W-X0+15,YT+8],[SX[1]-20,YT+8],[SX[5]+20,YT+8],[SX[1]-20,Y0-30],[SX[5]+20,Y0-30],[X0-15,SY[2]],[W-X0+15,SY[2]]]) placeStatic(towerDesc,x,y);
 placeStatic(gateDesc,SX[3],Y0-32);
 // countryside trees & props
-for(let i=0;i<170;i++){ let x,y; do { x=rnd(15,W-15); y=rnd(15,FIELD_TOP+60); } while ((x>INNER.x0-14&&x<INNER.x1+14&&y>INNER.y0-14&&y<INNER.y1+34) || Math.abs(x-SX[3])<44&&y<Y0); placeStatic(pick(treeDescs),x,y); }
+for(let i=0;i<170;i++){ let x,y; do { x=rnd(15,W-15); y=rnd(15,FIELD_TOP+60); } while ((x>INNER.x0-14&&x<INNER.x1+14&&y>INNER.y0-14&&y<INNER.y1+34) || Math.abs(x-SX[3])<44&&y<Y0 || Math.abs(y-RIVER.yc(x))<RIVER.hw+26); placeStatic(pick(treeDescs),x,y); }
 for(let i=0;i<46;i++) placeStatic(pick(pineDescs),rnd(0,W),rnd(FIELD_TOP+40,FIELD_TOP+130));
-for(let i=0;i<12;i++){ let x,y; do { x=rnd(15,W-15); y=rnd(15,FIELD_TOP); } while (x>INNER.x0-10&&x<INNER.x1+10&&y>INNER.y0-10&&y<INNER.y1+30); placeStatic(pick([hayDesc,rockDesc,shrineDesc]),x,y); }
+for(let i=0;i<12;i++){ let x,y; do { x=rnd(15,W-15); y=rnd(15,FIELD_TOP); } while ((x>INNER.x0-10&&x<INNER.x1+10&&y>INNER.y0-10&&y<INNER.y1+30) || Math.abs(y-RIVER.yc(x))<RIVER.hw+26); placeStatic(pick([hayDesc,rockDesc,shrineDesc]),x,y); }
 
-// ---- characters
-const people=[]; const specials={};
-const SHR={person:[7,3],dog:[8,3],pig:[8,3],chicken:[4,2],crane:[5,2]};
-const neighbors=(c,r)=>{ const n=[]; if(c>0)n.push([c-1,r]); if(c<COLS)n.push([c+1,r]); if(r>0&&!(c===3&&r===4))n.push([c,r-1]); if(r<ROWS&&!(c===3&&r===3))n.push([c,r+1]); return n; };
-const nodePos=(c,r)=>[SX[c],SY[r]];
-function makeEntity(frames,opts){
-  const e={frames, x:opts.x, y:opts.y, scale:opts.scale||1, speed:opts.speed||24, fps:opts.fps||6, phase:rand()*4, mode:opts.mode, pause:rnd(0,2), flip:chance(0.5), pauseChance:opts.pauseChance??0.2, idle:opts.idle||false, kind:opts.kind||'person', standFrame:opts.standFrame??1};
-  e.shR=SHR[e.kind]||[6,2]; e.cr=e.shR[0]*0.85; e.stuck=0; e.ox=0; e.oy=0;
-  if (e.mode==='street'){ e.node=[rndi(0,COLS),rndi(0,ROWS)]; const nb=pick(neighbors(...e.node)); const [ax,ay]=nodePos(...e.node),[bx,by]=nodePos(...nb); const t=rand(); e.x=ax+(bx-ax)*t+rnd(-30,30); e.y=ay+(by-ay)*t+rnd(-30,30); e.prev=e.node; e.node=nb; e.tx=bx+rnd(-32,32); e.ty=by+rnd(-32,32); }
-  else if (e.mode==='plaza'){ pickPlaza(e); e.x=e.tx; e.y=e.ty; pickPlaza(e); }
-  else if (e.mode==='field'){ e.band=rndi(0,3); pickField(e); e.x=e.tx; e.y=e.ty; pickField(e); }
-  else if (e.mode==='yard'){ e.yard=pick(YARDS); pickYard(e); e.x=e.tx; e.y=e.ty; pickYard(e); }
-  else { e.tx=e.x; e.ty=e.y; e.pause=1e9; }
-  e.rec=dyn.place(frames[0],e.x,e.y,zOf(e.y),e.flip,e.scale);
-  people.push(e); return e;
+// ------------------------------------------------------------------ NAVIGATION: street graph + places
+const NC=COLS+1, NR=ROWS+1, NN=NC*NR, nid=(c,r)=>r*NC+c;
+const NODES=[]; for(let r=0;r<NR;r++) for(let c=0;c<NC;c++) NODES.push({x:SX[c],y:SY[r]});
+const EDGES=[];
+for(let r=0;r<NR;r++) for(let c=0;c<NC;c++){ if (c<COLS) EDGES.push([nid(c,r),nid(c+1,r)]); if (r<ROWS && !(c===3&&(r===1||r===3))) EDGES.push([nid(c,r),nid(c,r+1)]); }
+const DIST=[...Array(NN)].map(()=>new Float64Array(NN).fill(1e9)), NEXT=[...Array(NN)].map(()=>new Int16Array(NN).fill(-1));
+for(let i=0;i<NN;i++){ DIST[i][i]=0; NEXT[i][i]=i; }
+for(const [a,b] of EDGES){ const d=Math.hypot(NODES[a].x-NODES[b].x,NODES[a].y-NODES[b].y); DIST[a][b]=DIST[b][a]=d; NEXT[a][b]=b; NEXT[b][a]=a; }
+for(let k=0;k<NN;k++) for(let i=0;i<NN;i++) for(let j=0;j<NN;j++) if (DIST[i][k]+DIST[k][j]<DIST[i][j]){ DIST[i][j]=DIST[i][k]+DIST[k][j]; NEXT[i][j]=NEXT[i][k]; }
+const hyp=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const segAnchor=(x,y,n1,n2)=>({x,y,o:NODES[n1].y===NODES[n2].y?'h':'v',nodes:[n1,n2]});
+const nodeAnchor=n=>({x:NODES[n].x,y:NODES[n].y,o:'n',nodes:[n]});
+function nearestNode(x,y){ let best=0,bd=1e9; for(let i=0;i<NN;i++){ const d=Math.hypot(NODES[i].x-x,NODES[i].y-y); if (d<bd){bd=d;best=i;} } return best; }
+const anchorPt=(e,a)=>a.o==='h'?{x:a.x,y:a.y+e.ly}:a.o==='v'?{x:a.x+e.lx,y:a.y}:{x:a.x+e.lx,y:a.y+e.ly};
+const nodePt=(e,n)=>({x:NODES[n].x+e.lx,y:NODES[n].y+e.ly});
+function buildPath(e,from,to){
+  const pts=[];
+  if (from && from.approach.length) for(let i=from.approach.length-2;i>=0;i--) pts.push({x:from.approach[i].x+6+e.lx*0.08,y:from.approach[i].y+3});   // keep-right: leave on one side of the doorway
+  const a1=from?from.anchor:nodeAnchor(nearestNode(e.x,e.y)), a2=to.anchor, A1=anchorPt(e,a1), A2=anchorPt(e,a2);
+  if (from && from.approach.length) pts.push(A1);
+  const same=a1.nodes.length===a2.nodes.length && a1.nodes.every(n=>a2.nodes.includes(n));
+  if (!same){ let best=1e9,b1=a1.nodes[0],b2=a2.nodes[0];
+    for(const n1 of a1.nodes) for(const n2 of a2.nodes){ const c=hyp(A1,NODES[n1])+DIST[n1][n2]+hyp(NODES[n2],A2); if (c<best){best=c;b1=n1;b2=n2;} }
+    let n=b1; pts.push(nodePt(e,n)); let guard=0; while(n!==b2 && guard++<60){ n=NEXT[n][b2]; pts.push(nodePt(e,n)); } }
+  pts.push(A2); const jx=-6+e.lx*0.08; for(const p of to.approach) pts.push({x:p.x+jx,y:p.y-3});   // ...and arrive on the other, so doorways don't jam head-on
+  if (!to.hide && to.approach.length){ const L=pts[pts.length-1]; pts[pts.length-1]={x:L.x+rnd(-7,7),y:L.y+rnd(-6,3)}; }   // spread crowds around a spot
+  return pts;
 }
-function pickPlaza(e){ let x,y; do { x=rnd(PLAZA.x+15,PLAZA.x+PLAZA.w-15); y=rnd(PLAZA.y+10,PLAZA.y+PLAZA.h-10); } while (Math.hypot(x-CENTER.x,y-CENTER.y)<55); e.tx=x; e.ty=y; }
-function pickYard(e){ const y=e.yard; e.tx=rnd(y.x,y.x+y.w); e.ty=rnd(y.y,y.y+y.h); }
-function pickField(e){ const b=e.band; if(b===0){e.tx=rnd(20,W-20);e.ty=rnd(20,Y0-45);} else if(b===1){e.tx=rnd(20,W-20);e.ty=rnd(YT+60,FIELD_TOP-10);} else if(b===2){e.tx=rnd(20,X0-45);e.ty=rnd(20,YT);} else {e.tx=rnd(W-X0+45,W-20);e.ty=rnd(20,YT);} }
-function addPerson(p,opts){ const frames=D.addStrip(4,44,66,(ctx,i)=>drawPerson(ctx,p,i)); const e=makeEntity(frames,{...opts,scale:1,speed:p.speed*(opts.speedMul||1),fps:p.fps}); e.shR=[Math.round(7*p.scale),p.scale<1?2:3]; e.cr=p.item==='pole'?11:6*p.scale; return e; }
+// places people can go
+const HOUSES=[], HOMES=[], SHOPS=[];
+for(const h of HOUSE_RAW){ const b=block(h.c,h.r); let anchor, approach;
+  if (h.front){ anchor=segAnchor(h.doorX,SY[h.r],nid(h.c,h.r),nid(h.c+1,h.r)); approach=[{x:h.doorX,y:b.y-7},{x:h.doorX,y:h.hb+2}]; }
+  else { const left=h.doorX<b.x+b.w/2, cc=left?h.c:h.c+1, by=b.y+119; anchor=segAnchor(SX[cc],by,nid(cc,h.r),nid(cc,h.r+1)); approach=[{x:left?b.x+3:b.x+b.w-3,y:by},{x:h.doorX,y:by},{x:h.doorX,y:h.hb+2}]; }
+  const pl={kind:h.type==='home'?'home':h.type, x:h.doorX, y:h.hb+2, anchor, approach, hide:true}; HOUSES.push(pl); (h.type==='home'?HOMES:SHOPS).push(pl); }
+const PLAZA_NODES=[nid(2,1),nid(3,1),nid(4,1),nid(2,2),nid(3,2),nid(4,2)];
+const STALLS=[]; for(const s of stallSpots) for(const ox of [-12,0,12]){ const p={x:s.x+ox,y:s.y-12}; let bn=PLAZA_NODES[0],bd=1e9; for(const n of PLAZA_NODES){ const d=hyp(p,NODES[n]); if (d<bd){bd=d;bn=n;} } STALLS.push({kind:'stall',x:p.x,y:p.y,anchor:nodeAnchor(bn),approach:[p],hide:false}); }
+const PAGODA=(()=>{ const b=block(0,2), x=b.x+112; return {kind:'pagoda',x,y:b.y+18,anchor:segAnchor(x,SY[2],nid(0,2),nid(1,2)),approach:[{x,y:b.y-7},{x,y:b.y+18}],hide:true}; })();
+const FORTP={kind:'fort',x:CENTER.x,y:FORT.y+12,anchor:nodeAnchor(nid(3,3)),approach:[{x:CENTER.x,y:FORT.y-8},{x:CENTER.x,y:FORT.y+12}],hide:true};
+const FARMS=[]; for(let i=0;i<60;i++){ const right=chance(0.5), fx=right?rnd(1710,2560):rnd(40,890), fy=16+18*rndi(0,4)+rnd(4,8), j=rnd(-9,9);
+  FARMS.push({kind:'farm',x:fx,y:fy,anchor:nodeAnchor(nid(3,0)),approach:[{x:SX[3]+j,y:Y0+6},{x:SX[3]+j,y:Y0-62},{x:fx,y:fy}],hide:false}); }
+function randomStroll(){ const [a,b]=pick(EDGES), tt=rnd(0.15,0.85); const x=NODES[a].x+(NODES[b].x-NODES[a].x)*tt, y=NODES[a].y+(NODES[b].y-NODES[a].y)*tt; return {kind:'stroll',x,y,anchor:segAnchor(x,y,a,b),approach:[],hide:false}; }
 
-// specials (the classic cast, dressed as they always are)
-const waldo=genPerson('plain'); Object.assign(waldo,{skin:'#f8d8b8',hair:'#3a2a22',hairStyle:0,hat:10,hatBase:'#e04a3a',hatStripe:'#fff4d8',top:'#fff4d8',stripes:'#e04a3a',stripeW:0,bottom:'#3a6ad8',dress:false,cloak:false,beard:false,mustache:false,item:chance(0.5)?'staff':null,glasses:true,collar:false,belt:true,cheeks:false,armor:false,speed:24,fps:6});
-const wenda=genPerson('plain'); Object.assign(wenda,{skin:'#f8d8b8',hair:'#3a2a22',hairStyle:1,hat:10,hatBase:'#e04a3a',hatStripe:'#fff4d8',top:'#fff4d8',stripes:'#e04a3a',stripeW:0,bottom:'#3a6ad8',dress:true,cloak:false,beard:false,mustache:false,item:null,glasses:true,collar:false,belt:false,apron:false,cheeks:false,armor:false,speed:22,fps:6});
-const odlaw=genPerson('plain'); Object.assign(odlaw,{skin:'#f0c498',hair:'#2a2030',hairStyle:0,hat:10,hatBase:'#f0b830',hatStripe:'#2a2030',top:'#f0b830',stripes:'#2a2030',stripeW:0,bottom:'#2a2030',dress:false,cloak:false,beard:false,mustache:true,item:null,glasses:true,collar:false,belt:false,cheeks:false,armor:false,speed:26,fps:6});
-const wizard=genPerson('daoist'); Object.assign(wizard,{hair:'#fff4d8',beard:true,hat:3,hatColor:'#e04a3a',top:'#3a6ad8',bottom:'#3a6ad8',item:'staff',speed:16,collar:false});
-specials.waldo={e:addPerson(waldo,{mode:'street'}),name:'Waldo',color:'#e04a3a'};
-specials.wenda={e:addPerson(wenda,{mode:'plaza'}),name:'Wenda',color:'#f08ab0'};
-specials.wizard={e:addPerson(wizard,{mode:'street'}),name:'Whitebeard',color:'#3a6ad8'};
-specials.odlaw={e:addPerson(odlaw,{mode:'street'}),name:'Odlaw',color:'#f0b830'};
-const woofFrames=D.addStrip(4,44,66,(ctx,i)=>drawDog(ctx,{color:'#fff4d8',stripes:true},i));
-specials.woof={e:makeEntity(woofFrames,{mode:'street',speed:34,fps:7,kind:'dog',standFrame:0,pauseChance:0.3}),name:'Woof',color:'#fff4d8'};
+// ------------------------------------------------------------------ POPULATION
+const FAMS=['Wang','Li','Zhang','Liu','Chen','Yang','Zhao','Huang','Zhou','Wu','Xu','Sun','Ma','Zhu','Hu','Guo','Lin','He','Gao','Luo','Song','Tang','Han','Feng','Deng'];
+const GIVEN=['Mei','Lan','Hua','Jun','Wei','Ming','Lei','Ying','Xiu','Bo','Fang','Hong','Jing','Kai','Ling','Ping','Qing','Rui','Tao','Yan','Yun','Zhen','An','Bao','Chun','Dong','Fei','Hao','Jia','Li'];
+const PETNAMES=['Mantou','Doudou','Huahua','Xiaobai','Wangcai','Dahuang','Niuniu','Tangyuan','Huzi','Pipi','Lele','Qiuqiu'];
+const TITLE={farmer:'Rice farmer',merchant:'Merchant',porter:'Porter',official:'Magistrate',monk:'Monk',kid:'Child',scholar:'Scholar',lady:'Townswoman',plain:'Townsperson',performer:'Street performer',daoist:'Daoist sage',soldier:'Soldier'};
+const ROLE_OF={farmer:'farmer',merchant:'merchant',porter:'porter',official:'official',monk:'monk',kid:'kid',soldier:'soldier'};
+const ents=[];
+function newEnt(frames,o){ const e=Object.assign({frames,x:0,y:0,speed:24,fps:6,phase:rand()*4,flip:chance(0.5),kind:'person',standFrame:1,path:null,pi:0,pause:0,timer:0,hidden:false,stuck:0,ox:0,oy:0,
+    lx:rnd(-30,30),ly:rnd(-26,26),cr:6,shR:[7,3],brain:'idle',ry:0,zo:null,nocol:false,noshadow:false,mv:false,w8:1,activity:''},o);
+  e.rec=dyn.place(frames[0],e.x,e.y,zOf(e.y),e.flip,1); ents.push(e); return e; }
+function personEnt(arch,o={},tweak){ const p=genPerson(arch); if (tweak) tweak(p); const frames=D.addStrip(4,44,66,(ctx,i)=>drawPerson(ctx,p,i));
+  return newEnt(frames,Object.assign({kind:'person',speed:p.speed,fps:p.fps,cr:p.item==='pole'?11:6*p.scale,shR:[Math.round(7*p.scale),p.scale<1?2:3],
+    name:pick(FAMS)+' '+pick(GIVEN),title:TITLE[arch]||'Townsperson',role:ROLE_OF[arch]||'resident'},o)); }
+const at=(e,x,y)=>{ e.x=x; e.y=y; return e; };
 
-const ARCHS=['farmer','farmer','merchant','merchant','scholar','official','monk','lady','lady','plain','plain','kid','kid','porter','performer','daoist'];
-for(let i=0;i<860;i++) addPerson(genPerson(pick(ARCHS)),{mode:'street'});
-for(let i=0;i<340;i++) addPerson(genPerson(pick(ARCHS)),{mode:'plaza',pauseChance:0.5});
-for(let i=0;i<100;i++) addPerson(genPerson(pick(['farmer','farmer','farmer','porter','kid','monk','merchant'])),{mode:'field',pauseChance:0.4});
-for(const s of stallSpots){ const v=genPerson('merchant'); v.item=null; addPerson(v,{mode:'idle',x:s.x+rnd(-6,6),y:s.y+6}); }
-for(const [x,y] of [[SX[3]-24,Y0+6],[SX[3]+24,Y0+6],[FORT.x+FORT.w/2-28,FORT.y+14],[FORT.x+FORT.w/2+28,FORT.y+14],[FORT.x+FORT.w/2-150,FORT.y+20],[FORT.x+FORT.w/2+150,FORT.y+20]]){ const g=genPerson('soldier'); g.item='halberd'; addPerson(g,{mode:'idle',x,y}); }
-for(let i=0;i<44;i++) addPerson(genPerson(pick(['soldier','soldier','soldier','official','scholar','porter','kid'])),{mode:'yard',pauseChance:0.5});
-for(let i=0;i<24;i++) addPerson(genPerson('soldier'),{mode:'street',pauseChance:0.1});
-for(let i=0;i<180;i++){ const c=rndi(0,COLS),r=rndi(0,ROWS); addPerson(genPerson(pick(ARCHS)),{mode:'idle',x:SX[c]+rnd(-40,40),y:SY[r]+rnd(-40,40)}); }
-for(let i=0;i<40;i++) addPerson(genPerson(pick(ARCHS)),{mode:'idle',x:rnd(PLAZA.x+20,PLAZA.x+PLAZA.w-20),y:PLAZA.y+PLAZA.h/2+rnd(-30,30)});
-// animals
-for(let i=0;i<20;i++){ const a={color:pick(['#8a5a32','#d8b078','#3a3440','#fff4d8','#a0603a','#f0b830'])}; makeEntity(D.addStrip(4,44,66,(ctx,f)=>drawDog(ctx,a,f)),{mode:pick(['street','street','plaza']),speed:rnd(30,45),fps:8,kind:'dog',standFrame:0,pauseChance:0.35}); }
-for(let i=0;i<10;i++){ makeEntity(D.addStrip(4,44,66,(ctx,f)=>drawPig(ctx,{},f)),{mode:pick(['plaza','field','street']),speed:rnd(10,16),fps:4,kind:'pig',standFrame:0,pauseChance:0.6}); }
-for(let i=0;i<24;i++){ const a={color:pick(['#fff4d8','#c88a5a','#3a3440','#f0b830'])}; makeEntity(D.addStrip(4,44,66,(ctx,f)=>drawChicken(ctx,a,f)),{mode:pick(['field','field','plaza']),speed:rnd(8,14),fps:9,kind:'chicken',standFrame:0,pauseChance:0.6}); }
-for(let i=0;i<10;i++){ makeEntity(D.addStrip(4,44,66,(ctx,f)=>drawCrane(ctx,f)),{mode:'field',speed:rnd(6,10),fps:3,kind:'crane',standFrame:0,pauseChance:0.8}); }
-// birds
+// --- citizens with homes and errands
+const CITIZEN_ARCHS=['farmer','farmer','merchant','merchant','scholar','official','monk','lady','lady','plain','plain','plain','kid','kid','porter','performer','daoist'];
+function stayTime(e,pl){ switch(pl.kind){ case 'home': return pl===e.home?rnd(4,16):rnd(3,10); case 'shop': return rnd(3,8); case 'inn': return rnd(4,12); case 'pagoda': return e.role==='monk'?rnd(12,30):rnd(5,12); case 'fort': return rnd(5,14);
+  case 'stall': return rnd(3,9); case 'farm': return rnd(15,35); default: return rnd(0.5,3); } }
+function insideText(e,pl){ switch(pl.kind){ case 'home': return pl===e.home?'at home':'visiting friends'; case 'shop': return pl===e.home?'minding the shop':'browsing in a shop'; case 'inn': return pl===e.home?'running the inn':'having tea at the inn';
+  case 'pagoda': return e.role==='monk'?'meditating in the pagoda':'praying at the pagoda'; case 'fort': return e.role==='official'?'holding court in the fortress':'on duty in the fortress'; } return ''; }
+function stayText(e,pl){ switch(pl.kind){ case 'stall': return e.role==='porter'?'loading goods at a stall':e.role==='dog'?'sniffing around the market':'haggling at a market stall'; case 'farm': return e.kind==='person'?'working the rice paddies':'pecking around the paddies'; default: return e.kind==='dog'?'sniffing a corner':'taking a breather'; } }
+function chooseNext(e){ const r=rand(), here=e.place;
+  switch(e.role){
+    case 'farmer': if (here && here.kind==='farm') return [e.home,'heading home from the fields']; if (here===e.home) return [pick(FARMS),'off to work the rice paddies']; return [e.home,'heading home'];
+    case 'merchant': if (here!==e.home && r<0.45) return [e.home,'heading back to the shop']; return r<0.8?[pick(STALLS),'buying stock at the market']:[randomStroll(),'out for a stroll'];
+    case 'porter': return here && here.kind==='stall' ? [pick(SHOPS),'delivering goods'] : [pick(STALLS),'fetching goods from the market'];
+    case 'official': if (here && here.kind==='fort') return r<0.5?[pick(HOUSES),'inspecting a household']:[pick(STALLS),'checking market prices']; return [FORTP,'reporting to the fortress'];
+    case 'monk': if (here!==PAGODA) return [PAGODA,'returning to the pagoda']; return r<0.5?[pick(STALLS),'collecting alms at the market']:[randomStroll(),'wandering in contemplation'];
+    case 'kid': if (here!==e.home && r<0.3) return [e.home,'running home']; return r<0.65?[randomStroll(),'playing in the street']:[pick(STALLS),'begging for a sweet at the market'];
+    case 'dog': return r<0.75?[randomStroll(),'trotting around town']:[pick(STALLS),'looking for scraps at the market'];
+  }
+  if (here!==e.home && r<0.35) return [e.home,'heading home'];
+  const q=rand();
+  if (q<0.35) return [pick(STALLS),'going to the market'];
+  if (q<0.55) return [pick(HOMES),'visiting a friend'];
+  if (q<0.75) return [pick(SHOPS),'going shopping'];
+  if (q<0.81) return [PAGODA,'going to pray at the pagoda'];
+  return [randomStroll(),'out for a stroll'];
+}
+function goNext(e){ const [pl,txt]=chooseNext(e); e.dest=pl; e.activity=txt; e.path=buildPath(e,e.place,pl); e.pi=0; }
+function arrive(e){ const pl=e.dest; e.place=pl; e.path=null;
+  if (pl.hide){ e.hidden=true; e.timer=stayTime(e,pl); e.activity=insideText(e,pl); } else { e.pause=stayTime(e,pl); e.activity=stayText(e,pl); } }
+function initCitizen(e){
+  if (e.role==='farmer' && chance(0.5)){ const f=pick(FARMS); e.place=f; e.dest=f; at(e,f.x,f.y); e.pause=rnd(1,25); e.activity='working the rice paddies'; return; }
+  if (e.home && chance(0.2)){ e.place=e.home; e.dest=e.home; at(e,e.home.x,e.home.y); e.hidden=true; e.timer=rnd(0,14); e.activity=insideText(e,e.home); return; }
+  const s=randomStroll(); e.place=s; const ap=anchorPt(e,s.anchor); at(e,ap.x,ap.y); goNext(e);
+  const k=rndi(0,Math.max(0,e.path.length-2)); e.pi=k; at(e,e.path[k].x+rnd(-3,3),e.path[k].y+rnd(-3,3)); }
+for(let i=0;i<1080;i++){ const arch=pick(CITIZEN_ARCHS); const e=personEnt(arch,{brain:'citizen'});
+  e.home = e.role==='monk'?PAGODA : e.role==='merchant'?pick(SHOPS) : pick(HOMES); initCitizen(e); }
+
+// --- market vendors and gossiping neighbours
+for(const s of stallSpots){ const v=personEnt('merchant',{brain:'idle',w8:0.05,nocol:true,activity:'selling wares',title:'Stall keeper'},p=>{p.item=null;}); at(v,s.x+rnd(-6,6),s.y+6); }
+for(let i=0;i<42;i++){ const [a,b]=pick(EDGES), tt=rnd(0.2,0.8), hz=NODES[a].y===NODES[b].y; let x=NODES[a].x+(NODES[b].x-NODES[a].x)*tt, y=NODES[a].y+(NODES[b].y-NODES[a].y)*tt;
+  if (hz) y+=pick([-38,38]); else x+=pick([-38,38]);
+  const n=chance(0.3)?3:2; for(let k=0;k<n;k++){ const g=personEnt(pick(['lady','plain','merchant','scholar','farmer','kid']),{brain:'idle',w8:0.08,activity:'gossiping with the neighbours'}); at(g,x+(k-(n-1)/2)*13,y+(k===2?9:0)); g.flip=k>=1&&k!==2?true:(k===2?chance(0.5):false); } }
+
+// --- soldiers: guards, drill, archery, barracks, patrols, wall sentries
+const guard=(x,y,flip,item='halberd',txt='standing guard')=>{ const g=personEnt('soldier',{brain:'idle',w8:0.05,title:'Guard',activity:txt},p=>{p.item=item;}); at(g,x,y); g.flip=flip; return g; };
+for(const [x,y,f] of [[SX[3]-26,Y0+10,false],[SX[3]+26,Y0+10,true],[SX[3]-28,Y0-50,false],[SX[3]+28,Y0-50,true],[CENTER.x-30,FORT.y+2,false],[CENTER.x+30,FORT.y+2,true],[CENTER.x-150,FORT.y+18,false],[CENTER.x+150,FORT.y+18,true],
+  [PLAZA.x+4,PLAZA.y+4,false],[PLAZA.x+PLAZA.w-4,PLAZA.y+4,true],[PLAZA.x+4,PLAZA.y+PLAZA.h-4,false],[PLAZA.x+PLAZA.w-4,PLAZA.y+PLAZA.h-4,true],[PAGODA.x-46,PAGODA.y-32,false]]) guard(x,y,f);
+for (const n of [nid(1,1),nid(5,1),nid(1,3),nid(5,3),nid(0,2),nid(6,2),nid(2,0),nid(4,4),nid(5,4)]){ const N=NODES[n]; guard(N.x-42,N.y-42,false,pick(['spear','halberd'])); guard(N.x-30,N.y-42,true,pick(['spear','halberd'])); }
+for(let row=0;row<3;row++) for(let col=0;col<5;col++) guard(FORT.x+22+col*19,FORT.y+78+row*16,false,'spear','drilling in formation');
+const officer=personEnt('soldier',{brain:'pace',w8:0.2,title:'Drill sergeant',activity:'barking orders',speed:14,wx0:FORT.x+18,wx1:FORT.x+112},p=>{p.item='flag';}); at(officer,FORT.x+60,FORT.y+60);
+for(let i=0;i<4;i++){ guard(FORT.x+FORT.w-112,FORT.y+60+i*26,false,'bow','practising archery'); }
+for(let i=0;i<14;i++){ const s=personEnt('soldier',{brain:'yard',yard:{x:FORT.x+FORT.w-140,y:FORT.y+150,w:120,h:90},title:'Soldier',activity:'off duty in the barracks yard',pauseChance:0.6}); at(s,FORT.x+FORT.w-80,FORT.y+190); }
+for(let sq=0;sq<3;sq++){ const lead=personEnt('soldier',{brain:'drive',speed:17,fps:5,trail:[],w8:0.3,lx:rnd(-12,12),ly:rnd(-10,10),title:'Patrol captain',activity:'leading a patrol'},p=>{p.item='flag';});
+  const s0=pick(EDGES); at(lead,NODES[s0[0]].x,NODES[s0[0]].y);
+  for(let k=1;k<=4;k++){ const f=personEnt('soldier',{brain:'follow',leader:lead,k,speed:17,fps:5,cr:5,title:'Soldier',activity:'on patrol'},p=>{p.item='spear';}); at(f,lead.x-k*12,lead.y); } }
+const WALLRUNS=[[SX[1]+30,SX[3]-110,Y0-30],[SX[3]+110,SX[5]-30,Y0-30],[SX[1]+30,SX[5]-30,YT+8]];
+for(let i=0;i<14;i++){ const [a,b,wy]=WALLRUNS[i%3], x=rnd(a,b); const s=personEnt('soldier',{brain:'pace',speed:10,fps:4,wx0:Math.max(a,x-140),wx1:Math.min(b,x+140),ry:36,zo:zOf(wy)+0.02,nocol:true,noshadow:true,title:'Sentry',activity:'keeping watch from the wall'},p=>{p.item=pick(['spear','spear','bow','flag']);}); at(s,x,wy); }
+
+// --- vehicles
+function vehicleEnt(kind){ const cfg={}; let draw, speed, fps;
+  switch(kind){
+    case 'rickshaw': cfg.puller=genPerson('porter'); cfg.puller.item=null; cfg.puller.hat=12; cfg.pas=genPerson(pick(['lady','merchant','official','scholar'])); cfg.color=pick(['#c8342a','#2f6fa8','#3a3440','#2a8a7a']); cfg.hood=pick(['#3a3440','#2f4a7a','#5a2a2a']); draw=drawRickshaw; speed=rnd(30,40); fps=9; break;
+    case 'sedan': cfg.b1=genPerson('porter'); cfg.b2=genPerson('porter'); for(const b of [cfg.b1,cfg.b2]){ b.item=null; b.top=b.bottom='#c8342a'; b.hat=16; b.hatColor='#3a3440'; b.collar=false; } cfg.color=pick(['#c8342a','#2f6fa8','#3aa060','#8a4ab0']); cfg.curtain=pick(['#f0b830','#fff4d8','#e04a3a']); cfg.roof=pick(['#2f8fa8','#f0b830','#3aa060']); draw=drawSedan; speed=rnd(16,20); fps=6; break;
+    case 'ox': cfg.driver=genPerson('farmer'); cfg.driver.hat=12; cfg.ox=pick(['#8a5a32','#a0703a','#5a4030','#c8a070']); cfg.load=pick(['hay','jars','sacks']); draw=drawOxcart; speed=rnd(10,13); fps=4; break;
+    default: cfg.pusher=genPerson(pick(['farmer','porter','merchant'])); cfg.pusher.item=null; cfg.load=pick(['veg','boxes']); draw=drawHandcart; speed=rnd(15,20); fps=6; }
+  const frames=D.addStrip(4,92,72,(ctx,f)=>draw(ctx,cfg,f));
+  const T={rickshaw:['Rickshaw','carrying a passenger across town'],sedan:['Sedan chair','bearing a noble through the streets'],ox:['Ox cart','hauling goods to market'],hand:['Wheelbarrow','pushing a load of produce']}[kind];
+  const e=newEnt(frames,{kind:'vehicle',vk:kind,brain:'drive',speed,fps,standFrame:0,cr:kind==='hand'?9:13,shR:[kind==='hand'?14:20,4],w8:0.15,lx:rnd(-20,20),ly:rnd(-18,18),name:T[0],title:'',activity:T[1]});
+  const s0=pick(EDGES), tt=rand(); return at(e,NODES[s0[0]].x+(NODES[s0[1]].x-NODES[s0[0]].x)*tt+e.lx,NODES[s0[0]].y+(NODES[s0[1]].y-NODES[s0[0]].y)*tt+e.ly); }
+for(let i=0;i<14;i++) vehicleEnt('rickshaw'); for(let i=0;i<6;i++) vehicleEnt('sedan'); for(let i=0;i<8;i++) vehicleEnt('ox'); for(let i=0;i<12;i++) vehicleEnt('hand');
+
+// --- pets
+const DOGC=['#8a5a32','#d8b078','#3a3440','#fff4d8','#a0603a','#f0b830','#c8a070'];
+function dogEnt(o){ const a={color:pick(DOGC),stripes:chance(0.1)}; return newEnt(D.addStrip(4,44,66,(ctx,f)=>drawDog(ctx,a,f)),Object.assign({kind:'dog',speed:rnd(34,44),fps:8,standFrame:0,cr:5,shR:[8,3],name:pick(PETNAMES),title:'Dog'},o)); }
+const citizens=ents.filter(e=>e.brain==='citizen'&&e.role!=='monk');
+for(let i=0;i<16;i++){ const o=pick(citizens); const d=dogEnt({brain:'pet',owner:o}); at(d,o.x-8,o.y-3); d.waitX=o.x; d.waitY=o.y-8; }
+for(let i=0;i<28;i++){ const d=dogEnt({brain:'citizen',role:'dog'}); initCitizen(d); }
+const CATS=[{color:'#f09030',stripe:'#c06010'},{color:'#3a3440'},{color:'#fff4d8'},{color:'#8a8a96',stripe:'#5a5a66'},{color:'#f0c080',stripe:'#c89050'},{color:'#3a3440',patch:true},{color:'#f09030',patch:true}];
+function catEnt(o){ const c=pick(CATS); const e=newEnt(D.addStrip(4,30,30,(ctx,f)=>drawCat(ctx,c,f,false)),Object.assign({kind:'cat',speed:rnd(16,22),fps:8,standFrame:0,cr:3.5,shR:[5,2],name:pick(PETNAMES),title:'Cat'},o));
+  e.sitFrames=D.addStrip(2,30,30,(ctx,f)=>drawCat(ctx,c,f,true)); return e; }
+for(let i=0;i<30;i++){ const c=catEnt({brain:'cat',activity:'prowling'}); const s=randomStroll(); at(c,s.x+rnd(-40,40),s.y+rnd(-40,40)); c.pause=rnd(0,8); }
+for(let i=0;i<18;i++){ const h=pick(HOUSE_RAW); const c=catEnt({brain:'idle',nocol:true,noshadow:true,activity:'napping on a rooftop'}); at(c,h.hx+rnd(-h.w*0.25,h.w*0.25),h.hb); c.ry=h.roofTop; c.zo=zOf(h.hb)+0.03; c.sit=true; }
+
+// --- countryside, farm animals, river folk
+function fieldPt(e){ const b=e.band; if (b===0) return {x:rnd(20,W-20),y:rnd(20,Y0-45)}; if (b===2) return {x:rnd(20,X0-45),y:rnd(20,YT)}; if (b===3) return {x:rnd(W-X0+45,W-20),y:rnd(20,YT)}; const f=pick(FARMS); return {x:f.x,y:f.y}; }
+for(let i=0;i<36;i++){ const e=personEnt(pick(['farmer','farmer','porter','kid','monk']),{brain:'field',band:pick([0,2,3]),pauseChance:0.4,activity:'tending the fields'}); const p=fieldPt(e); at(e,p.x,p.y); }
+for(let i=0;i<20;i++){ const a={color:pick(['#fff4d8','#c88a5a','#3a3440','#f0b830'])}; const e=newEnt(D.addStrip(4,44,66,(ctx,f)=>drawChicken(ctx,a,f)),{kind:'chicken',brain:'field',band:pick([0,0,2,3]),speed:rnd(8,14),fps:9,standFrame:0,cr:3,shR:[4,2],pauseChance:0.6,name:'Chicken',title:'',activity:'scratching for grain'}); const p=fieldPt(e); at(e,p.x,p.y); }
+for(let i=0;i<8;i++){ const e=newEnt(D.addStrip(4,44,66,(ctx,f)=>drawPig(ctx,{},f)),{kind:'pig',brain:'field',band:pick([0,2,3]),speed:rnd(10,16),fps:4,standFrame:0,cr:6,shR:[8,3],pauseChance:0.6,name:'Pig',title:'',activity:'rooting in the mud'}); const p=fieldPt(e); at(e,p.x,p.y); }
+for(let i=0;i<10;i++){ const e=newEnt(D.addStrip(4,44,66,(ctx,f)=>drawCrane(ctx,f)),{kind:'crane',brain:'field',band:4,speed:rnd(6,10),fps:3,standFrame:0,cr:4,shR:[5,2],pauseChance:0.8,name:'Crane',title:'',activity:'wading in the paddies'}); const p=fieldPt(e); at(e,p.x,p.y); }
+const bankY=x=>RIVER.yc(x)-RIVER.hw-4;
+for(const dx of DOCKS){ for(const ox of [-3,4]){ const f=personEnt(pick(['farmer','plain','kid']),{brain:'idle',w8:0.05,activity:'fishing off the dock',title:'Fisher'},p=>{p.item='rod';}); at(f,dx+ox,RIVER.yc(dx)-6+ox); f.flip=ox<0; } }
+for(let i=0;i<8;i++){ const x=rnd(80,W-80); if (Math.abs(x-WHEEL_X)<60) continue; const f=personEnt(pick(['farmer','plain','scholar','kid']),{brain:'idle',w8:0.05,activity:'fishing in the river',title:'Fisher'},p=>{p.item='rod';}); at(f,x,bankY(x)-1); f.flip=chance(0.5); }
+for(let i=0;i<14;i++){ const e=personEnt(pick(['lady','plain','scholar','kid','farmer','monk']),{brain:'bank',boff:rnd(2,9),speed:rnd(14,20),activity:'strolling along the river'}); const x=rnd(40,W-40); at(e,x,bankY(x)-e.boff); }
+
+// --- ambient creatures that don't collide
+const pigeons=[]; const PIGC=[{body:'#9aa0b0'},{body:'#b0b4c0'},{body:'#7a7e8e'},{body:'#d8d4cc'}];
+const pigFrames=PIGC.map(c=>D.addStrip(4,18,18,(ctx,f)=>drawPigeon(ctx,c,f)));
+function pigeonSpot(){ if (chance(0.6)){ let x,y; do { x=rnd(PLAZA.x+10,PLAZA.x+PLAZA.w-10); y=rnd(PLAZA.y+10,PLAZA.y+PLAZA.h-10); } while (Math.hypot(x-CENTER.x,(y-CENTER.y)*1.5)<60); return {x,y}; } const s=randomStroll(); return {x:s.x+rnd(-40,40),y:s.y+rnd(-40,40)}; }
+for(let i=0;i<80;i++){ const s=pigeonSpot(); const g={x:s.x,y:s.y,state:'ground',timer:rnd(0,4),frames:pick(pigFrames),flip:chance(0.5),phase:rand()*4,tx:s.x,ty:s.y}; g.rec=dyn.place(g.frames[0],g.x,g.y,zOf(g.y)); pigeons.push(g); }
+const boats=[]; for(let i=0;i<10;i++){ const v={man:genPerson(pick(['farmer','porter','plain'])),cargo:chance(0.5)}; v.man.item=null; v.man.hat=chance(0.7)?12:v.man.hat;
+  const b={x:rnd(0,W),vx:rnd(7,13)*(chance(0.5)?1:-1),lane:rnd(-7,7),phase:rand()*4,frames:D.addStrip(4,72,62,(ctx,f)=>drawBoat(ctx,v,f))}; b.rec=dyn.place(b.frames[0],b.x,RIVER.yc(b.x),zOf(RIVER.yc(b.x))); boats.push(b); }
+const ducks=[]; const DUCKC=[{body:'#a07a50',head:'#2a8a5a'},{body:'#fff4d8',head:'#fff4d8'},{body:'#c8a070',head:'#a07a50'}];
+const duckFrames=DUCKC.map(c=>D.addStrip(2,16,14,(ctx,f)=>drawDuck(ctx,c,f)));
+for(let fl=0;fl<4;fl++){ const x0=rnd(0,W), dir=chance(0.5)?1:-1, sp=rnd(3,6), lane=rnd(-10,10); for(let k=0;k<5;k++){ const d={x0,k,dir,sp,lane,frames:duckFrames[k===0?0:pick([0,1,2])],phase:rand()*2}; d.rec=dyn.place(d.frames[0],x0,RIVER.yc(x0),zOf(RIVER.yc(x0))); ducks.push(d); } }
+const wheelFrames=D.addStrip(4,60,52,(ctx,f)=>drawWaterWheel(ctx,f)); const wheelRec=dyn.place(wheelFrames[0],WHEEL_X,RIVER.yc(WHEEL_X)-4,zOf(RIVER.yc(WHEEL_X)-4));
 const birdFrames=D.addStrip(2,16,12,(ctx,f)=>drawBird(ctx,f)); const birds=[];
-for(let i=0;i<16;i++){ const b={x:rnd(0,W),y:rnd(0,H),vx:rnd(20,40)*(chance(0.5)?1:-1),vy:rnd(-6,6),phase:rand()*10}; b.rec=dyn.place(birdFrames[0],b.x,b.y,60,b.vx<0,rnd(0.8,1.3)); birds.push(b); }
-const ringDesc=D.addUnit(60,60,drawRing); const ringRecs=[]; for(let i=0;i<5;i++) ringRecs.push(dyn.place(ringDesc,-1000,-1000,59));
+for(let i=0;i<24;i++){ const b={x:rnd(0,W),y:rnd(0,H),vx:rnd(20,40)*(chance(0.5)?1:-1),vy:rnd(-6,6),phase:rand()*10}; b.rec=dyn.place(birdFrames[0],b.x,b.y,60,b.vx<0,rnd(0.8,1.3)); birds.push(b); }
+const arrowRec=dyn.place(D.addUnit(20,24,drawArrow),-9999,-9999,59);
 
 // ---- finalize: palette, ground, atlases, shadows
 buildPalette();
 const groundCanvas=drawGround();
 const groundLayer=new Layer(makeTexture(groundCanvas),1); groundLayer.set(0,W/2,0,0,{u:0,v:0,uw:1,vh:1,w:W,h:H,oy:0},false,1); groundLayer.commit(); scene.add(groundLayer.mesh);
 statics.build(scene,true); dyn.build(scene,true);
-const shadows=new ShadowLayer(people.length); scene.add(shadows.mesh);
-window.__waldo={people};   // handy for debugging in the console
+const shadows=new ShadowLayer(ents.length+pigeons.length); scene.add(shadows.mesh);
+window.__city={ents,pigeons};   // handy for poking at the simulation from the console
 
 // ------------------------------------------------------------------ RENDERER / CAMERA
 const renderer=new THREE.WebGLRenderer({antialias:false}); renderer.setPixelRatio(1); renderer.setSize(innerWidth,innerHeight); renderer.setClearColor(0x2e5a2e); document.body.appendChild(renderer.domElement);
@@ -960,101 +1185,136 @@ if (qs.get('zoom')) zoom=+qs.get('zoom'); if (qs.get('x')) camera.position.x=+qs
 updateCamera();
 addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); minZoom=fitZoom(); updateCamera(); });
 const toWorld=(sx,sy)=>[camera.position.x+(sx-innerWidth/2)/zoom, camera.position.y-(sy-innerHeight/2)/zoom];
-let drag=null, moved=0;
+let drag=null, moved=0, followed=null, camX=camera.position.x, camY=camera.position.y;
+window.__city.follow=e=>{ followed=e; };
 const cv=renderer.domElement;
 cv.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,cx:camera.position.x,cy:camera.position.y}; moved=0; cv.setPointerCapture(e.pointerId); });
-cv.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; moved+=Math.abs(dx)+Math.abs(dy); camera.position.x=drag.cx-dx/zoom; camera.position.y=drag.cy+dy/zoom; updateCamera(); });
+cv.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; moved+=Math.abs(dx)+Math.abs(dy); if (moved>6) followed=null; camera.position.x=drag.cx-dx/zoom; camera.position.y=drag.cy+dy/zoom; updateCamera(); camX=camera.position.x; camY=camera.position.y; });
 cv.addEventListener('pointerup',e=>{ if(drag&&moved<6) onClick(e.clientX,e.clientY); drag=null; });
-// wheel steps through crisp zoom levels (integer scales keep pixels square)
 let wheelAcc=0;
 cv.addEventListener('wheel',e=>{ e.preventDefault(); wheelAcc+=e.deltaY; if (Math.abs(wheelAcc)<40) return; const dir=wheelAcc>0?-1:1; wheelAcc=0;
   const lv=[minZoom,...ZL.filter(z=>z>minZoom*1.05)]; let idx=0,best=1e9; lv.forEach((z,i)=>{ const d=Math.abs(Math.log(z/zoom)); if (d<best){best=d;idx=i;} });
   const nz=lv[Math.max(0,Math.min(lv.length-1,idx+dir))]; if (nz===zoom) return;
-  const [wx,wy]=toWorld(e.clientX,e.clientY); zoom=nz; const [nx,ny]=toWorld(e.clientX,e.clientY); camera.position.x+=wx-nx; camera.position.y+=wy-ny; updateCamera(); },{passive:false});
+  const [wx,wy]=toWorld(e.clientX,e.clientY); zoom=nz; if (!followed){ const [nx,ny]=toWorld(e.clientX,e.clientY); camera.position.x+=wx-nx; camera.position.y+=wy-ny; } updateCamera(); camX=camera.position.x; camY=camera.position.y; },{passive:false});
 let pinch=null; cv.addEventListener('touchstart',e=>{ if(e.touches.length===2) pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); },{passive:true});
 cv.addEventListener('touchmove',e=>{ if(e.touches.length===2&&pinch){ const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); zoom=Math.max(minZoom,Math.min(maxZoom,zoom*d/pinch)); pinch=d; updateCamera(); } },{passive:true});
 
-// ------------------------------------------------------------------ HUD / FINDING
-const list=document.getElementById('list'); const msg=document.getElementById('msg');
-for(const k in specials){ const li=document.createElement('li'); li.id='li-'+k; li.innerHTML=`<span class="sw" style="background:${specials[k].color}"></span>${specials[k].name}`; list.appendChild(li); }
-document.getElementById('hint').textContent=`${people.length} townsfolk & animals are out and about. Add ?seed=123 to the URL for a new town.`;
-let foundCount=0;
+// ------------------------------------------------------------------ HUD: census + follow inspector
+const info=document.getElementById('info'), census=document.getElementById('census');
 function onClick(sx,sy){
-  const [wx,wy]=toWorld(sx,sy); const tol=Math.max(14,22/Math.sqrt(zoom));
-  for(const k in specials){ const s=specials[k]; if(s.found) continue; const e=s.e;
-    if (Math.abs(wx-e.x)<tol && wy>e.y-8 && wy<e.y+(e.kind==='dog'?18:44)*e.scale+8){ s.found=true; s.ring=ringRecs[foundCount++]; document.getElementById('li-'+k).classList.add('found');
-      msg.textContent=foundCount===Object.keys(specials).length?'★ You found everyone! ★':`You found ${s.name}!`; msg.style.opacity=1; clearTimeout(msg.t); msg.t=setTimeout(()=>msg.style.opacity=0,2000); return; }
-  }
+  const [wx,wy]=toWorld(sx,sy); let best=null, bz=-1;
+  for(const e of ents){ if (e.hidden) continue; const top=e.kind==='vehicle'?56:e.kind==='person'?44:16, half=e.kind==='vehicle'?30:e.kind==='person'?9:9;
+    const by=e.y+(e.ry||0); if (Math.abs(wx-e.x)<half && wy>by-4 && wy<by+top){ const z=e.zo??zOf(e.y); if (z>bz){ bz=z; best=e; } } }
+  followed=best; updateInfo();
 }
+function describe(e){ if (e.brain==='pet'){ const o=e.owner; return o.hidden?`waiting outside for ${o.name}`:`trotting after ${o.name}`; } return e.activity||''; }
+function updateInfo(){ if (!followed){ info.style.opacity=0; return; } const e=followed;
+  info.innerHTML=`<div class="nm">${e.name}</div>${e.title?`<div class="tt">${e.title}</div>`:''}<div class="ac">${describe(e)}</div>`; info.style.opacity=1; }
 
 // ------------------------------------------------------------------ SIMULATION
-function retarget(e){
-  if (e.mode==='street'){ const [nx,ny]=nodePos(...e.node); e.tx=nx+rnd(-32,32); e.ty=ny+rnd(-32,32); }
-  else if (e.mode==='plaza') pickPlaza(e); else if (e.mode==='yard') pickYard(e); else if (e.mode==='field') pickField(e);
+function walkPath(e,dt){
+  if (!e.path || e.pi>=e.path.length) return true;
+  const p=e.path[e.pi]; const dx=p.x-e.x, dy=p.y-e.y, d=Math.hypot(dx,dy), v=e.speed*dt;
+  if (d<=Math.max(e.pi===e.path.length-1?(e.dest&&e.dest.hide?12:7):2,v)){ e.x=p.x; e.y=p.y; e.pi++; e.stuck=0; e.mv=true; return e.pi>=e.path.length; }
+  e.x+=dx/d*v; e.y+=dy/d*v; if (Math.abs(dx)>0.5) e.flip=dx<0; e.mv=true; return false;
 }
-// Each character has an invisible foot ellipse (squashed in y for the 3/4 view). Overlaps are pushed apart,
-// weighted so standing/idle people barely budge, and walkers sidestep to their right around whoever is in front.
-const YS=1.5, CELL=24, grid=new Map();
-const movable=e=>e.mode==='idle'?0.08:(e.pause>0?0.3:1);
+function stepToward(e,tx,ty,speed,dt,stop=1.5){ const dx=tx-e.x, dy=ty-e.y, d=Math.hypot(dx,dy); if (d<=stop) return true; const v=Math.min(d,speed*dt); e.x+=dx/d*v; e.y+=dy/d*v; if (Math.abs(dx)>0.3) e.flip=dx<0; e.mv=true; return false; }
+function planDrive(e){ const here=nearestNode(e.x,e.y); let to; do { to=rndi(0,NN-1); } while(to===here || DIST[here][to]<300); const pts=[]; let n=here; pts.push(nodePt(e,n)); while(n!==to){ n=NEXT[n][to]; pts.push(nodePt(e,n)); } e.path=pts; e.pi=0; }
+const BRAINS={
+  idle(){},
+  citizen(e,dt){
+    if (e.hidden){ e.timer-=dt; if (e.timer<=0){ e.hidden=false; at(e,e.place.x,e.place.y); goNext(e); } return; }
+    if (e.pause>0){ e.pause-=dt; if (e.role==='farmer' && chance(0.01)) e.flip=!e.flip; if (e.pause<=0) goNext(e); return; }
+    if (walkPath(e,dt)) arrive(e); },
+  drive(e,dt){ if (e.pause>0){ e.pause-=dt; return; }
+    if (!e.path || e.pi>=e.path.length) planDrive(e);
+    if (walkPath(e,dt)){ if (e.vk==='sedan'||chance(0.3)) e.pause=rnd(1,4); e.path=null; }
+    if (e.trail){ const L=e.trail[e.trail.length-1]; if (!L||Math.hypot(e.x-L.x,e.y-L.y)>2.4){ e.trail.push({x:e.x,y:e.y}); if (e.trail.length>60) e.trail.shift(); } } },
+  follow(e,dt){ const L=e.leader, tr=L.trail, tp=tr[Math.max(0,tr.length-1-e.k*6)]||L; const far=Math.hypot(tp.x-e.x,tp.y-e.y)>20; stepToward(e,tp.x,tp.y,L.speed*(far?1.6:1.15),dt); },
+  pet(e,dt){ const o=e.owner; let tx,ty;
+    if (!o.hidden){ tx=o.x+(o.flip?10:-10); ty=o.y-4; e.waitX=o.x+rnd(-1,1); e.waitY=o.y-10; } else { tx=e.waitX; ty=e.waitY; }
+    const d=Math.hypot(tx-e.x,ty-e.y); stepToward(e,tx,ty,d>40?70:Math.max(o.speed*1.2,20),dt,3); },
+  cat(e,dt){ if (e.pause>0){ e.pause-=dt; e.sit=true; e.activity='washing a paw'; return; } e.sit=false; e.activity='prowling';
+    if (!e.path || e.pi>=e.path.length){ let x,y,tries=0; do { x=e.x+rnd(-90,90); y=e.y+rnd(-70,70); } while ((x<X0+12||x>W-X0-12||y<Y0+12||y>YT-12)&&++tries<10); e.path=[{x,y}]; e.pi=0; }
+    if (walkPath(e,dt)) e.pause=rnd(3,14); },
+  field(e,dt){ if (e.pause>0){ e.pause-=dt; return; } if (!e.path || e.pi>=e.path.length){ e.path=[fieldPt(e)]; e.pi=0; } if (walkPath(e,dt) && chance(e.pauseChance??0.4)) e.pause=rnd(1,5); },
+  yard(e,dt){ if (e.pause>0){ e.pause-=dt; return; } if (!e.path || e.pi>=e.path.length){ const y=e.yard; e.path=[{x:rnd(y.x,y.x+y.w),y:rnd(y.y,y.y+y.h)}]; e.pi=0; } if (walkPath(e,dt) && chance(e.pauseChance??0.4)) e.pause=rnd(1,6); },
+  pace(e,dt){ if (e.pause>0){ e.pause-=dt; return; } if (e.ptx===undefined) e.ptx=rnd(e.wx0,e.wx1); if (stepToward(e,e.ptx,e.y,e.speed,dt)){ e.ptx=rnd(e.wx0,e.wx1); e.pause=rnd(1,6); } },
+  bank(e,dt){ if (e.pause>0){ e.pause-=dt; return; } if (e.btx===undefined) e.btx=Math.max(40,Math.min(W-40,e.x+rnd(-300,300)));
+    const dx=e.btx-e.x; if (Math.abs(dx)<2){ e.btx=undefined; e.pause=rnd(1,6); return; } e.x+=Math.sign(dx)*Math.min(e.speed*dt,Math.abs(dx)); e.y=bankY(e.x)-e.boff; e.flip=dx<0; e.mv=true; },
+};
+
+// Collisions: every walker has an invisible foot ellipse; overlaps push apart (heavier/standing things barely move),
+// walkers sidestep to their right around whatever is ahead, and fixed props (stalls, posts, carts) are solid.
+const YS=1.5, CELL=24, grid=new Map(), OCELL=64, ogrid=new Map();
+for(const o of OBST){ const k=Math.floor(o.x/OCELL)*4096+Math.floor(o.y/OCELL); let a=ogrid.get(k); if(!a){a=[];ogrid.set(k,a);} a.push(o); }
+const movable=e=>e.pause>0&&e.w8===1?0.3:e.w8;
+function sidestep(e,sx,sy,amt){ if (!e.path || e.pi>=e.path.length) return; const p=e.path[e.pi]; let hx=p.x-e.x, hy=(p.y-e.y)*YS; const hl=Math.hypot(hx,hy); if (hl<0.01) return; hx/=hl; hy/=hl;
+  if (hx*sx+hy*sy>0.25){ e.x+=hy*amt; e.y+=(-hx*amt)/YS; } }
 function resolveCollisions(){
   grid.clear();
-  for(let i=0;i<people.length;i++){ const e=people[i]; const k=Math.floor(e.x/CELL)*4096+Math.floor(e.y/CELL); let a=grid.get(k); if(!a){a=[];grid.set(k,a);} a.push(i); }
-  for(let i=0;i<people.length;i++){ const a=people[i]; const gx=Math.floor(a.x/CELL), gy=Math.floor(a.y/CELL);
+  for(let i=0;i<ents.length;i++){ const e=ents[i]; if (e.hidden||e.nocol) continue; const k=Math.floor(e.x/CELL)*4096+Math.floor(e.y/CELL); let a=grid.get(k); if(!a){a=[];grid.set(k,a);} a.push(i); }
+  for(let i=0;i<ents.length;i++){ const a=ents[i]; if (a.hidden||a.nocol) continue; const gx=Math.floor(a.x/CELL), gy=Math.floor(a.y/CELL);
     for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){ const cell=grid.get((gx+ox)*4096+gy+oy); if(!cell) continue;
-      for(const j of cell){ if (j<=i) continue; const b=people[j];
+      for(const j of cell){ if (j<=i) continue; const b=ents[j];
         let dx=b.x-a.x, dy=(b.y-a.y)*YS; const minD=a.cr+b.cr; let d2=dx*dx+dy*dy; if (d2>=minD*minD) continue;
-        let d=Math.sqrt(d2); if (d<0.01){ const ang=rand()*TAU; dx=Math.cos(ang); dy=Math.sin(ang); d=1; d2=1; }
-        const nx=dx/d, ny=dy/d, overlap=(minD-d)*0.5;
-        const wa=movable(a), wb=movable(b), sum=wa+wb, fa=wa/sum, fb=wb/sum;
+        let d=Math.sqrt(d2); if (d<0.01){ const ang=rand()*TAU; dx=Math.cos(ang); dy=Math.sin(ang); d=1; }
+        const nx=dx/d, ny=dy/d, overlap=(minD-d)*0.5, wa=movable(a), wb=movable(b), sum=wa+wb||1, fa=wa/sum, fb=wb/sum;
         a.x-=nx*overlap*fa; a.y-=ny*overlap*fa/YS; b.x+=nx*overlap*fb; b.y+=ny*overlap*fb/YS;
-        for(const [e,sx,sy,f] of [[a,nx,ny,fa],[b,-nx,-ny,fb]]){
-          if (e.pause>0 || e.mode==='idle') continue;
-          let hx=e.tx-e.x, hy=(e.ty-e.y)*YS; const hl=Math.hypot(hx,hy); if (hl<0.01) continue; hx/=hl; hy/=hl;
-          if (hx*sx+hy*sy>0.25){ const push=overlap*1.4*f; e.x+=hy*push; e.y+=(-hx*push)/YS; }
-        }
-      }
-    }
+        if (a.mv) sidestep(a,nx,ny,overlap*1.4*fa); if (b.mv) sidestep(b,-nx,-ny,overlap*1.4*fb); } }
+    const ogx=Math.floor(a.x/OCELL), ogy=Math.floor(a.y/OCELL);
+    for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){ const cell=ogrid.get((ogx+ox)*4096+ogy+oy); if(!cell) continue;
+      for(const o of cell){ const dx=a.x-o.x, dy=(a.y-o.y)*YS, minD=o.r+a.cr, d=Math.hypot(dx,dy); if (d>=minD||d<0.01) continue;
+        const push=minD-d, nx=dx/d, ny=dy/d; a.x+=nx*push; a.y+=ny*push/YS; if (a.mv) sidestep(a,-nx,-ny,push*0.8); } }
   }
 }
-function keepInBounds(e){
-  if (e.mode==='street'){ if (!isStreet(e.x,e.y)){ if (isStreet(e.x,e.oy)) e.y=e.oy; else if (isStreet(e.ox,e.y)) e.x=e.ox; else { e.x=e.ox; e.y=e.oy; } } }
-  else if (e.mode==='plaza'){ e.x=Math.max(PLAZA.x+6,Math.min(PLAZA.x+PLAZA.w-6,e.x)); e.y=Math.max(PLAZA.y+4,Math.min(PLAZA.y+PLAZA.h-4,e.y));
-    const fx=e.x-CENTER.x, fy=e.y-CENTER.y, fd=Math.hypot(fx,fy); if (fd<50&&fd>0){ e.x=CENTER.x+fx/fd*50; e.y=CENTER.y+fy/fd*50; } }
-  else if (e.mode==='yard'){ const y=e.yard; e.x=Math.max(y.x,Math.min(y.x+y.w,e.x)); e.y=Math.max(y.y,Math.min(y.y+y.h,e.y)); }
-}
-function step(e,dt){
-  if (e.pause>0){ e.pause-=dt; if (e.idle && chance(0.004)) e.flip=!e.flip; return; }
-  const dx=e.tx-e.x, dy=e.ty-e.y, dist=Math.hypot(dx,dy);
-  if (dist<2){
-    if (e.mode==='street'){ const nb=neighbors(...e.node).filter(n=>!(n[0]===e.prev[0]&&n[1]===e.prev[1])); const next=nb.length?pick(nb):e.prev; e.prev=e.node; e.node=next; const [nx,ny]=nodePos(...next); e.tx=nx+rnd(-32,32); e.ty=ny+rnd(-32,32); }
-    else if (e.mode==='plaza') pickPlaza(e); else if (e.mode==='yard') pickYard(e); else pickField(e);
-    if (chance(e.pauseChance)) e.pause=rnd(0.8,5);
-    return;
-  }
-  const v=e.speed*dt; const k=Math.min(1,v/dist); e.x+=dx*k; e.y+=dy*k;
-  if (Math.abs(dx)>0.5) e.flip=dx<0;
-  if (e.mode==='plaza'){ const fx=e.x-CENTER.x, fy=e.y-CENTER.y, fd=Math.hypot(fx,fy); if (fd<50){ e.x=CENTER.x+fx/fd*50; e.y=CENTER.y+fy/fd*50; } }
-}
-const clock=new THREE.Clock(); let t=0, frames=0, fpsT=0;
+function anyoneNear(x,y,r){ const gx=Math.floor(x/CELL), gy=Math.floor(y/CELL);
+  for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){ const cell=grid.get((gx+ox)*4096+gy+oy); if(!cell) continue; for(const j of cell){ const e=ents[j]; if (e.kind!=='cat'&&Math.hypot(e.x-x,(e.y-y)*YS)<r) return true; } } return false; }
+
+const clock=new THREE.Clock(); let t=0, frames=0, fpsT=0, infoT=0;
 const stats=document.getElementById('stats');
-function animate(){
-  requestAnimationFrame(animate);
-  const dt=Math.min(0.05,clock.getDelta()); t+=dt;
-  for(const e of people){ e.ox=e.x; e.oy=e.y; step(e,dt); }
+const OFF=-99999;
+function animate(){ requestAnimationFrame(animate); frame(Math.min(0.05,clock.getDelta()),true); }
+window.__city.advance=secs=>{ for(let k=0;k<secs*30;k++) frame(1/30,false); };   // test hook: run the sim without drawing
+function frame(dt,draw){
+  t+=dt;
+  for(const e of ents){ e.ox=e.x; e.oy=e.y; e.mv=false; BRAINS[e.brain](e,dt); }
   resolveCollisions();
-  for(let i=0;i<people.length;i++){ const e=people[i];
-    keepInBounds(e);
-    if (e.pause<=0 && e.mode!=='idle'){ const moved=Math.hypot(e.x-e.ox,e.y-e.oy);
-      if (moved<e.speed*dt*0.35){ e.stuck+=dt; if (e.stuck>1.8){ e.stuck=0; retarget(e); } } else e.stuck=Math.max(0,e.stuck-dt*0.5); }
-    const f=e.pause>0?e.standFrame:Math.floor(t*e.fps+e.phase)%4;
-    const r=e.rec; r.x=e.x; r.y=e.y; r.z=zOf(e.y); r.d=e.frames[f]; r.flip=e.flip; dyn.update(r);
-    shadows.set(i,Math.round(e.x),Math.round(e.y),e.shR[0],e.shR[1]);
+  let outside=0, inside=0;
+  for(let i=0;i<ents.length;i++){ const e=ents[i], r=e.rec;
+    if (e.hidden){ r.scale=0; dyn.update(r); shadows.set(i,OFF,OFF,1,1); inside++; continue; }
+    if (e.kind==='person') outside++;
+    if (e.mv && e.path){ if (Math.hypot(e.x-e.ox,e.y-e.oy)<e.speed*dt*0.3){ e.stuck+=dt; if (e.stuck>2.5){ e.stuck=0; e.pi++; } } else e.stuck=Math.max(0,e.stuck-dt); }
+    let d;
+    if (e.kind==='cat' && (e.sit||!e.mv)) d=e.sitFrames[Math.floor(t*0.7+e.phase)%2];
+    else d=e.frames[e.mv?Math.floor(t*e.fps+e.phase)%4:e.standFrame];
+    r.x=e.x; r.y=e.y+(e.ry||0); r.z=e.zo??zOf(e.y); r.d=d; r.flip=e.flip; r.scale=1; dyn.update(r);
+    if (e.noshadow) shadows.set(i,OFF,OFF,1,1); else shadows.set(i,Math.round(e.x),Math.round(e.y),e.shR[0],e.shR[1]);
   }
+  // pigeons: peck around, scatter when someone walks close, flap off to land somewhere else
+  for(let i=0;i<pigeons.length;i++){ const g=pigeons[i], r=g.rec; let h=0, f;
+    if (g.state==='ground'){ g.timer-=dt;
+      if (anyoneNear(g.x,g.y,12) || (g.timer<0 && chance(0.002))){ let s,tries=0; do { s=pigeonSpot(); } while (Math.hypot(s.x-g.x,s.y-g.y)>320 && ++tries<12); g.state='fly'; g.fx=g.x; g.fy=g.y; g.tx=s.x; g.ty=s.y; g.ft=0; g.fd=Math.max(0.8,Math.hypot(s.x-g.x,s.y-g.y)/70); g.flip=s.x<g.x; }
+      else { if (g.timer<0){ g.timer=rnd(1,4); g.hx=g.x+rnd(-14,14); g.hy=g.y+rnd(-8,8); }
+        if (g.hx!==undefined){ const dx=g.hx-g.x, dy=g.hy-g.y, dd=Math.hypot(dx,dy); if (dd>0.5){ g.x+=dx/dd*Math.min(dd,9*dt); g.y+=dy/dd*Math.min(dd,9*dt); g.flip=dx<0; } else g.hx=undefined; }
+        f=g.hx!==undefined?Math.floor(t*6+g.phase)%2:(Math.floor(t*1.5+g.phase)%3===0?1:0); } }
+    if (g.state==='fly'){ g.ft+=dt/g.fd; const k=Math.min(1,g.ft); g.x=g.fx+(g.tx-g.fx)*k; g.y=g.fy+(g.ty-g.fy)*k; h=Math.sin(PI*k)*Math.min(60,20+g.fd*16); f=2+Math.floor(t*12+g.phase)%2; if (k>=1){ g.state='ground'; g.timer=rnd(2,6); } }
+    r.x=g.x; r.y=g.y+h; r.z=zOf(g.y)+(h>4?2:0); r.d=g.frames[f]; r.flip=g.flip; dyn.update(r);
+    shadows.set(ents.length+i,Math.round(g.x),Math.round(g.y),h>4?3:2,1);
+  }
+  for(const b of boats){ b.x+=b.vx*dt; if (b.x<-50) b.x=W+50; if (b.x>W+50) b.x=-50; const y=RIVER.yc(b.x)+b.lane; const r=b.rec; r.x=b.x; r.y=y; r.z=zOf(y); r.d=b.frames[Math.floor(t*2+b.phase)%4]; r.flip=b.vx<0; dyn.update(r); }
+  for(const d of ducks){ const lx=((d.x0+d.dir*d.sp*t)%(W+100)+(W+100))%(W+100)-50, x=lx-d.dir*d.k*9; const y=RIVER.yc(x)+d.lane+Math.sin(t*1.3+d.k)*1.5; const r=d.rec; r.x=x; r.y=y; r.z=zOf(y); r.d=d.frames[Math.floor(t*2+d.phase)%2]; r.flip=d.dir<0; dyn.update(r); }
+  wheelRec.d=wheelFrames[Math.floor(t*4)%4]; dyn.update(wheelRec);
   for(const b of birds){ b.x+=b.vx*dt; b.y+=b.vy*dt; if(b.x<-20) b.x=W+20; if(b.x>W+20) b.x=-20; if(b.y<0||b.y>H) b.vy=-b.vy; const r=b.rec; r.x=b.x; r.y=b.y; r.d=birdFrames[Math.floor(t*6+b.phase)%2]; r.flip=b.vx<0; dyn.update(r); }
-  for(const k in specials){ const s=specials[k]; if(s.ring){ s.ring.x=s.e.x; s.ring.y=s.e.y+(s.e.kind==='dog'?-14:0); dyn.update(s.ring); } }
+  // follow camera + marker
+  if (followed){ const e=followed; camX+=(e.x-camX)*Math.min(1,dt*5); camY+=(e.y+(e.ry||0)+18-camY)*Math.min(1,dt*5); camera.position.x=camX; camera.position.y=camY; updateCamera();
+    arrowRec.x=e.x; arrowRec.y=e.y+(e.ry||0)+(e.kind==='vehicle'?(e.vk==='sedan'?66:48):e.kind==='person'?50:22)+Math.round(Math.abs(Math.sin(t*4))*3); arrowRec.scale=e.hidden?0:1; }
+  else arrowRec.scale=0;
+  dyn.update(arrowRec);
   dyn.commit(); shadows.commit();
-  renderer.render(scene,camera);
-  frames++; fpsT+=dt; if (fpsT>0.5){ stats.textContent=`${Math.round(frames/fpsT)} fps · ${people.length} characters · zoom ${zoom.toFixed(2)}`; frames=0; fpsT=0; }
+  if (draw) renderer.render(scene,camera);
+  infoT+=dt; if (infoT>0.25){ infoT=0; updateInfo(); }
+  frames++; fpsT+=dt; if (fpsT>0.5){ census.innerHTML=`Out &amp; about: ${outside}<br>Indoors: ${inside}<br>Carts &amp; chairs: 40`; stats.textContent=`${Math.round(frames/fpsT)} fps · ${ents.length} actors`; frames=0; fpsT=0; }
 }
 document.getElementById('loading').remove();
 animate();
