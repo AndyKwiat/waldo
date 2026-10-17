@@ -783,7 +783,7 @@ const neighbors=(c,r)=>{ const n=[]; if(c>0)n.push([c-1,r]); if(c<COLS)n.push([c
 const nodePos=(c,r)=>[SX[c],SY[r]];
 function makeEntity(frames,opts){
   const e={frames, x:opts.x, y:opts.y, scale:opts.scale||1, speed:opts.speed||24, fps:opts.fps||6, phase:rand()*4, mode:opts.mode, pause:rnd(0,2), flip:chance(0.5), pauseChance:opts.pauseChance??0.2, idle:opts.idle||false, kind:opts.kind||'person', standFrame:opts.standFrame??1};
-  e.shR=SHR[e.kind]||[6,2];
+  e.shR=SHR[e.kind]||[6,2]; e.cr=e.shR[0]*0.85; e.stuck=0; e.ox=0; e.oy=0;
   if (e.mode==='street'){ e.node=[rndi(0,COLS),rndi(0,ROWS)]; const nb=pick(neighbors(...e.node)); const [ax,ay]=nodePos(...e.node),[bx,by]=nodePos(...nb); const t=rand(); e.x=ax+(bx-ax)*t+rnd(-30,30); e.y=ay+(by-ay)*t+rnd(-30,30); e.prev=e.node; e.node=nb; e.tx=bx+rnd(-32,32); e.ty=by+rnd(-32,32); }
   else if (e.mode==='plaza'){ pickPlaza(e); e.x=e.tx; e.y=e.ty; pickPlaza(e); }
   else if (e.mode==='field'){ e.band=rndi(0,3); pickField(e); e.x=e.tx; e.y=e.ty; pickField(e); }
@@ -795,7 +795,7 @@ function makeEntity(frames,opts){
 function pickPlaza(e){ let x,y; do { x=rnd(PLAZA.x+15,PLAZA.x+PLAZA.w-15); y=rnd(PLAZA.y+10,PLAZA.y+PLAZA.h-10); } while (Math.hypot(x-CENTER.x,y-CENTER.y)<55); e.tx=x; e.ty=y; }
 function pickYard(e){ const y=e.yard; e.tx=rnd(y.x,y.x+y.w); e.ty=rnd(y.y,y.y+y.h); }
 function pickField(e){ const b=e.band; if(b===0){e.tx=rnd(20,W-20);e.ty=rnd(20,Y0-45);} else if(b===1){e.tx=rnd(20,W-20);e.ty=rnd(YT+60,FIELD_TOP-10);} else if(b===2){e.tx=rnd(20,X0-45);e.ty=rnd(20,YT);} else {e.tx=rnd(W-X0+45,W-20);e.ty=rnd(20,YT);} }
-function addPerson(p,opts){ const frames=D.addStrip(4,44,66,(ctx,i)=>drawPerson(ctx,p,i)); const e=makeEntity(frames,{...opts,scale:1,speed:p.speed*(opts.speedMul||1),fps:p.fps}); e.shR=[Math.round(7*p.scale),p.scale<1?2:3]; return e; }
+function addPerson(p,opts){ const frames=D.addStrip(4,44,66,(ctx,i)=>drawPerson(ctx,p,i)); const e=makeEntity(frames,{...opts,scale:1,speed:p.speed*(opts.speedMul||1),fps:p.fps}); e.shR=[Math.round(7*p.scale),p.scale<1?2:3]; e.cr=p.item==='pole'?11:6*p.scale; return e; }
 
 // specials (the classic cast, dressed as they always are)
 const waldo=genPerson('plain'); Object.assign(waldo,{skin:'#f8d8b8',hair:'#3a2a22',hairStyle:0,hat:10,hatBase:'#e04a3a',hatStripe:'#fff4d8',top:'#fff4d8',stripes:'#e04a3a',stripeW:0,bottom:'#3a6ad8',dress:false,cloak:false,beard:false,mustache:false,item:chance(0.5)?'staff':null,glasses:true,collar:false,belt:true,cheeks:false,armor:false,speed:24,fps:6});
@@ -835,6 +835,7 @@ const groundCanvas=drawGround();
 const groundLayer=new Layer(makeTexture(groundCanvas),1); groundLayer.set(0,W/2,0,0,{u:0,v:0,uw:1,vh:1,w:W,h:H,oy:0},false,1); groundLayer.commit(); scene.add(groundLayer.mesh);
 statics.build(scene); dyn.build(scene,true);
 const shadows=new ShadowLayer(people.length); scene.add(shadows.mesh);
+window.__waldo={people};   // handy for debugging in the console
 
 // ------------------------------------------------------------------ RENDERER / CAMERA
 const renderer=new THREE.WebGLRenderer({antialias:false}); renderer.setPixelRatio(1); renderer.setSize(innerWidth,innerHeight); renderer.setClearColor(0x2e5a2e); document.body.appendChild(renderer.domElement);
@@ -881,6 +882,40 @@ function onClick(sx,sy){
 }
 
 // ------------------------------------------------------------------ SIMULATION
+function retarget(e){
+  if (e.mode==='street'){ const [nx,ny]=nodePos(...e.node); e.tx=nx+rnd(-32,32); e.ty=ny+rnd(-32,32); }
+  else if (e.mode==='plaza') pickPlaza(e); else if (e.mode==='yard') pickYard(e); else if (e.mode==='field') pickField(e);
+}
+// Each character has an invisible foot ellipse (squashed in y for the 3/4 view). Overlaps are pushed apart,
+// weighted so standing/idle people barely budge, and walkers sidestep to their right around whoever is in front.
+const YS=1.5, CELL=24, grid=new Map();
+const movable=e=>e.mode==='idle'?0.08:(e.pause>0?0.3:1);
+function resolveCollisions(){
+  grid.clear();
+  for(let i=0;i<people.length;i++){ const e=people[i]; const k=Math.floor(e.x/CELL)*4096+Math.floor(e.y/CELL); let a=grid.get(k); if(!a){a=[];grid.set(k,a);} a.push(i); }
+  for(let i=0;i<people.length;i++){ const a=people[i]; const gx=Math.floor(a.x/CELL), gy=Math.floor(a.y/CELL);
+    for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){ const cell=grid.get((gx+ox)*4096+gy+oy); if(!cell) continue;
+      for(const j of cell){ if (j<=i) continue; const b=people[j];
+        let dx=b.x-a.x, dy=(b.y-a.y)*YS; const minD=a.cr+b.cr; let d2=dx*dx+dy*dy; if (d2>=minD*minD) continue;
+        let d=Math.sqrt(d2); if (d<0.01){ const ang=rand()*TAU; dx=Math.cos(ang); dy=Math.sin(ang); d=1; d2=1; }
+        const nx=dx/d, ny=dy/d, overlap=(minD-d)*0.5;
+        const wa=movable(a), wb=movable(b), sum=wa+wb, fa=wa/sum, fb=wb/sum;
+        a.x-=nx*overlap*fa; a.y-=ny*overlap*fa/YS; b.x+=nx*overlap*fb; b.y+=ny*overlap*fb/YS;
+        for(const [e,sx,sy,f] of [[a,nx,ny,fa],[b,-nx,-ny,fb]]){
+          if (e.pause>0 || e.mode==='idle') continue;
+          let hx=e.tx-e.x, hy=(e.ty-e.y)*YS; const hl=Math.hypot(hx,hy); if (hl<0.01) continue; hx/=hl; hy/=hl;
+          if (hx*sx+hy*sy>0.25){ const push=overlap*1.4*f; e.x+=hy*push; e.y+=(-hx*push)/YS; }
+        }
+      }
+    }
+  }
+}
+function keepInBounds(e){
+  if (e.mode==='street'){ if (!isStreet(e.x,e.y)){ if (isStreet(e.x,e.oy)) e.y=e.oy; else if (isStreet(e.ox,e.y)) e.x=e.ox; else { e.x=e.ox; e.y=e.oy; } } }
+  else if (e.mode==='plaza'){ e.x=Math.max(PLAZA.x+6,Math.min(PLAZA.x+PLAZA.w-6,e.x)); e.y=Math.max(PLAZA.y+4,Math.min(PLAZA.y+PLAZA.h-4,e.y));
+    const fx=e.x-CENTER.x, fy=e.y-CENTER.y, fd=Math.hypot(fx,fy); if (fd<50&&fd>0){ e.x=CENTER.x+fx/fd*50; e.y=CENTER.y+fy/fd*50; } }
+  else if (e.mode==='yard'){ const y=e.yard; e.x=Math.max(y.x,Math.min(y.x+y.w,e.x)); e.y=Math.max(y.y,Math.min(y.y+y.h,e.y)); }
+}
 function step(e,dt){
   if (e.pause>0){ e.pause-=dt; if (e.idle && chance(0.004)) e.flip=!e.flip; return; }
   const dx=e.tx-e.x, dy=e.ty-e.y, dist=Math.hypot(dx,dy);
@@ -899,8 +934,12 @@ const stats=document.getElementById('stats');
 function animate(){
   requestAnimationFrame(animate);
   const dt=Math.min(0.05,clock.getDelta()); t+=dt;
+  for(const e of people){ e.ox=e.x; e.oy=e.y; step(e,dt); }
+  resolveCollisions();
   for(let i=0;i<people.length;i++){ const e=people[i];
-    step(e,dt);
+    keepInBounds(e);
+    if (e.pause<=0 && e.mode!=='idle'){ const moved=Math.hypot(e.x-e.ox,e.y-e.oy);
+      if (moved<e.speed*dt*0.35){ e.stuck+=dt; if (e.stuck>1.8){ e.stuck=0; retarget(e); } } else e.stuck=Math.max(0,e.stuck-dt*0.5); }
     const f=e.pause>0?e.standFrame:Math.floor(t*e.fps+e.phase)%4;
     const r=e.rec; r.x=e.x; r.y=e.y; r.z=zOf(e.y); r.d=e.frames[f]; r.flip=e.flip; dyn.update(r);
     shadows.set(i,Math.round(e.x),Math.round(e.y),e.shR[0],e.shR[1]);
