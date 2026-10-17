@@ -22,7 +22,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#a6d8f2");
-scene.fog = new THREE.Fog("#bfe3f5", 900, 2200);
+scene.fog = new THREE.Fog("#bfe3f5", 1100, 3200);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
 Object.assign(controls, { enableDamping: true, dampingFactor: 0.12, screenSpacePanning: false, maxPolarAngle: 1.42, minDistance: 12, maxDistance: 1600, zoomSpeed: 1.2 });
@@ -35,7 +35,10 @@ addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; cam
 
 const VIEWS = {
   town: () => [[W.CENTER.x + 170, 190, W.CENTER.z + 260], [W.CENTER.x, 0, W.CENTER.z - 10]],
-  overview: () => [[W.WX / 2, 640, W.WZ + 330], [W.WX / 2, 0, W.WZ / 2 - 30]],
+  overview: () => [[W.WX / 2, 900, W.WZ + 420], [W.WX / 2, 0, W.WZ / 2 - 30]],
+  city: () => [[W.CITY.x0 + W.CW / 2, 520, W.CITY.z1 + 420], [W.CITY.x0 + W.CW / 2, 0, (W.CITY.z0 + W.CITY.z1) / 2]],
+  walls: () => [[W.CITY.x1 + 70, 70, W.CITY.z1 + 80], [W.CITY.x1 - 60, 22, W.CITY.z1 - 10]],
+  country: () => [[W.HAMLETS[2].x + 160, 120, W.HAMLETS[2].z + 210], [W.HAMLETS[2].x + 40, 0, W.HAMLETS[2].z - 20]],
   plaza: () => [[W.CENTER.x + 40, 70, W.CENTER.z + 110], [W.CENTER.x, 0, W.CENTER.z]],
   street: () => [[W.SX[0] + 6, 18, W.SZ[3] + 4], [W.SX[2] + 20, 4, W.SZ[3] - 2]],
   gate: () => [[W.GATE_X + 35, 42, W.WALL_S + 105], [W.GATE_X, 10, W.WALL_S + 4]],
@@ -56,9 +59,19 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(W.WX, W.WZ), new THREE.Mes
 ground.rotation.x = -Math.PI / 2; ground.position.set(W.WX / 2, 0, W.WZ / 2); ground.receiveShadow = true; scene.add(ground);
 const outer = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshLambertMaterial({ color: "#5fae44" }));
 outer.rotation.x = -Math.PI / 2; outer.position.set(W.WX / 2, -0.05, W.WZ / 2); scene.add(outer);
-const mountains = new THREE.Mesh(W.mountainGeometry(), vmat); mountains.receiveShadow = true; mountains.castShadow = true; scene.add(mountains);
+const mountains = new THREE.Mesh(W.mountainGeometry(), vmat); mountains.receiveShadow = true; scene.add(mountains);
+/** Flat ribbon following f(x) (river, roads) — used to carry the river and roads past the painted ground into the haze. */
+function ribbon(x0, x1, zc, hw, y, color, opts = {}) {
+  const pos = [], idx = []; for (let x = x0, i = 0; x <= x1; x += 4, i++) { const z = zc(x); pos.push(x, y, z - hw, x, y, z + hw); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, ...opts })); m.receiveShadow = true; scene.add(m); return m;
+}
+for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) { ribbon(a, b, W.RIVER.zc, W.RIVER.hw + 5, 0.02, "#e8d8a0"); ribbon(a, b, W.RIVER.zc, W.RIVER.hw, 0.04, "#3a8ac8"); }
+for (const r of W.ROADS) if (r.w > r.d) for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) ribbon(a, b, () => r.z + r.d / 2, r.d / 2, 0.03, "#c8a878");
+{ const r = W.ROADS[0]; const g = new THREE.Mesh(new THREE.PlaneGeometry(r.w, 3000), new THREE.MeshLambertMaterial({ color: "#c8a878" })); g.rotation.x = -Math.PI / 2; g.position.set(r.x + r.w / 2, 0.03, W.WZ + 1500); scene.add(g); }
+const hills = new THREE.Mesh(W.hillGeometry(L.bumps), vmat); hills.receiveShadow = true; hills.castShadow = true; scene.add(hills);
 { // translucent river surface
-  const pos = [], idx = []; for (let x = -40, i = 0; x <= W.WX + 40; x += 4, i++) { const zc = W.RIVER.zc(x); pos.push(x, 0.25, zc - W.RIVER.hw, x, 0.25, zc + W.RIVER.hw); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
+  const pos = [], idx = []; for (let x = -3000, i = 0; x <= W.WX + 3000; x += 4, i++) { const zc = W.RIVER.zc(x); pos.push(x, 0.25, zc - W.RIVER.hw, x, 0.25, zc + W.RIVER.hw); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
   const water = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: "#5ab8f0", transparent: true, opacity: 0.4 })); water.receiveShadow = true; scene.add(water);
 }
@@ -82,11 +95,27 @@ function tufts() { // little 3D grass tufts and rice seedlings to break up the f
   const geo = meshVoxels(gridFromVoxels([[8, 0, 8, "#ffffff"], [8, 1, 8, "#ffffff"], [7, 0, 8, "#ffffff"], [9, 0, 9, "#ffffff"]], 16));
   const pts = [];
   for (const p of W.PADDIES) for (let z = p.z + 3; z < p.z + p.d; z += 12) for (let x = p.x + 2; x < p.x + p.w - 2; x += 3) pts.push([x + W.rnd(-0.6, 0.6), z + W.rnd(0, 4), W.pick(["#58c048", "#6cd058", "#48a838"])]);
-  for (let i = 0; i < 2600; i++) { const x = W.rnd(0, W.WX), z = W.rnd(40, W.WZ); if (W.isStreet(x, z) || W.inRect(x, z, W.PLAZA) || W.inRect(x, z, W.FORT) || Math.abs(z - W.RIVER.zc(x)) < W.RIVER.hw + 4) continue;
-    if (W.PADDIES.some((p) => x > p.x - 2 && x < p.x + p.w + 2 && z > p.z - 2 && z < p.z + p.d + 2)) continue; pts.push([x, z, W.pick(["#4ea23a", "#62b446", "#3a8430", "#90d866"])]); }
+  for (let i = 0; i < 16000; i++) { const x = W.rnd(0, W.WX), z = W.rnd(W.RIVER.zc(0) + 20, W.WZ); if (W.occupied(x, z, -6) && !W.inRect(x, z, W.CITY_R)) continue;
+    if (W.isStreet(x, z) || W.inRect(x, z, W.PLAZA) || W.inRect(x, z, W.FORT) || (W.inRect(x, z, W.CITY_R) && !W.isStreet(x, z) && chance3())) continue; pts.push([x, z, W.pick(["#4ea23a", "#62b446", "#3a8430", "#90d866"])]); }
   const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length); const col = new THREE.Color();
-  pts.forEach(([x, z, c], i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, 0, z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(c)); });
+  pts.forEach(([x, z, c], i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(c)); });
   im.receiveShadow = true; scene.add(im);
+}
+const chance3 = () => W.rand() < 0.7;
+function bushes() { // leafy bushes and flower clumps scattered over the countryside
+  const vox = []; for (const [x, y, z] of [[7, 0, 7], [8, 0, 7], [9, 0, 7], [7, 0, 8], [8, 0, 8], [9, 0, 8], [8, 0, 9], [7, 0, 9], [8, 1, 7], [8, 1, 8], [7, 1, 8], [9, 1, 8], [8, 2, 8]]) vox.push([x, y, z, "#ffffff"]);
+  const pts = []; for (let i = 0; i < 2600; i++) { const x = W.rnd(-60, W.WX + 60), z = W.rnd(W.RIVER.zc(0) + 24, W.WZ + 40); if (W.occupied(x, z, 2)) continue; pts.push([x, z, W.pick(["#3aa848", "#2e8a3a", "#4cb85a", "#58c060", "#3a9a40", "#f8b8c8", "#f0e060"])]); }
+  const im = new THREE.InstancedMesh(meshVoxels(gridFromVoxels(vox, 16)), new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length), col = new THREE.Color();
+  pts.forEach(([x, z, c], i) => { const sc = W.rnd(0.7, 1.5); Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(sc, sc * W.rnd(0.7, 1.1), sc))); im.setColorAt(i, col.set(c)); });
+  im.castShadow = true; im.receiveShadow = true; scene.add(im);
+}
+function crops() { // 3D crop rows on the farm fields: cabbages and wheat
+  const kinds = { cabbage: [[[8, 0, 8], [9, 0, 8], [8, 0, 9], [9, 0, 9], [8, 1, 8], [9, 1, 9], [8, 1, 9]], ["#58c060", "#3aa848", "#7ad870"]], wheat: [[[8, 0, 8], [8, 1, 8], [8, 2, 8], [8, 3, 8], [8, 3, 9]], ["#e8c048", "#d8b038", "#f0d060"]] };
+  const col = new THREE.Color();
+  for (const [k, [vox, cols]] of Object.entries(kinds)) { const list = L.crops.filter((c) => c.kind === k); if (!list.length) continue;
+    const im = new THREE.InstancedMesh(meshVoxels(gridFromVoxels(vox.map((v) => [...v, "#ffffff"]), 16)), new THREE.MeshLambertMaterial({ vertexColors: true }), list.length);
+    list.forEach((c, i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(c.x, 0, c.z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(W.pick(cols))); });
+    im.receiveShadow = true; im.castShadow = k === "wheat"; scene.add(im); }
 }
 
 // ---------- actors: one InstancedMesh per look (people share a library of looks; animals/vehicles by kind)
@@ -95,7 +124,7 @@ const actorMeshes = new Map(); const pickables = [];
 const lookKey = (look) => (look.model ? "m:" + look.model : look.animal ? `a:${look.animal}:${look.variant}` : look);
 function animalGrid(look) {
   const k = look.animal, v = look.variant;
-  const c = k === "dog" ? DOG_COLORS[v % DOG_COLORS.length] : k === "cat" ? CAT_LOOKS[v % CAT_LOOKS.length] : k === "pigeon" ? PIGEON_COLORS[v % PIGEON_COLORS.length] : k === "duck" ? DUCK_LOOKS[v % DUCK_LOOKS.length] : k === "chicken" ? ["#fff4d8", "#c88a5a", "#3a3440", "#f0b830"][v % 4] : null;
+  const c = k === "dog" ? DOG_COLORS[v % DOG_COLORS.length] : k === "cat" ? CAT_LOOKS[v % CAT_LOOKS.length] : k === "pigeon" ? PIGEON_COLORS[v % PIGEON_COLORS.length] : k === "duck" ? DUCK_LOOKS[v % DUCK_LOOKS.length] : k === "chicken" ? ["#fff4d8", "#c88a5a", "#3a3440", "#f0b830"][v % 4] : v; // cows/sheep carry their colour in the variant
   return gridFromVoxels(animalVoxels(k, c), 16);
 }
 async function buildActors() {
@@ -120,8 +149,8 @@ function updateActors(dt) {
     if (e.hidden) { place(e, e.x, -50, e.z, 0, 0); continue; }
     const moved = Math.hypot(e.x - (e.px ?? e.x), e.z - (e.pz ?? e.z)); e.px = e.x; e.pz = e.z;
     e.hp += moved * (e.kind === "vehicle" ? 0.5 : 0.75);
-    const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop : 0;
-    place(e, e.x, (e.y || 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
+    const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;   // slower walkers bob less
+    place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
   }
   for (const g of sim.pigeons) place(g, g.x, g.y + (g.state === "fly" ? Math.abs(Math.sin(sim.time * 14 + g.phase)) * 0.6 : 0), g.z, g.yaw, 1);
   for (const b of sim.boats) place(b, b.x, -0.6 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
@@ -177,13 +206,13 @@ city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.inf
 (async () => {
   try {
     setStatus("BUILDING THE CITY...");
-    tufts();
+    tufts(); crops(); bushes();
     await Promise.all([buildStatics(), buildActors(), buildWheel()]);
     setView(qs.get("view") ?? "town");
     if (qs.get("t")) city.advance(+qs.get("t"));
     document.getElementById("loading")?.remove();
     city.ready = true;
-    const loop = () => { requestAnimationFrame(loop); frame(Math.min(0.05, clock.getDelta())); };
+    const loop = () => { requestAnimationFrame(loop); const dt = Math.min(0.05, clock.getDelta()); if (dt > 0) frame(dt); };
     loop();
   } catch (err) { setStatus("ERROR: " + err.message); console.error(err); city.error = String(err.stack || err); }
 })();

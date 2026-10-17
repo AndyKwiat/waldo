@@ -14,7 +14,7 @@ bun run models              # rebuild every model through Voxer → models/*.jso
 
 **Controls:** left-drag orbit · right-drag pan · scroll zoom · WASD move · click someone to follow them
 (orbiting keeps following; right-drag, WASD or Esc stops).
-**URL params:** `?view=town|overview|plaza|street|gate|fort|river|paddies|pagoda` · `&t=<sim seconds to
+**URL params:** `?view=town|overview|city|plaza|street|gate|walls|fort|river|paddies|pagoda|country` · `&t=<sim seconds to
 fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 
 ## Layout
@@ -23,8 +23,8 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 |---|---|
 | `index.html` | page, HUD styles, import map (three from `node_modules`) |
 | `src/main.js` | renderer, lights, camera/controls, instancing of models and actors, picking/follow, `window.city` |
-| `src/world.js` | world layout (street grid, blocks, plaza, fort, river, paddies, walls), static placements, ground texture, mountains |
-| `src/sim.js` | street graph + shortest routes, places with door approaches, citizens/vehicles/soldiers/pets/pigeons/boats/ducks, collisions |
+| `src/world.js` | world layout (street grid, blocks, plaza, fort, walls, river, paddies, fields, hamlets, roads, hills), static placements, ground texture, mountain + hill meshes, `groundH(x,z)` |
+| `src/sim.js` | street graph + shortest routes, places with door approaches, citizens/vehicles/soldiers/pets/livestock/pigeons/boats/ducks, crowd steering + collisions |
 | `src/people.js` | procedural voxel people (archetype looks) and animals |
 | `src/voxels.js` | Voxer scene decoding + face-culled mesher with per-vertex ambient occlusion |
 | `models/recipes/*.js` | model recipes (Voxer draw ops); `colors.js` is shared with the browser for variant re-coloring |
@@ -32,7 +32,14 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 | `scripts/` | `serve.ts` static server · `shot.ts` headless screenshots · `build-models.ts` + `voxer.ts` Voxer driver |
 
 ## Conventions
-- **World:** 1 unit = 1 voxel. x east, z south, y up. Blocks are 84×76, streets 22 wide (see `world.js`).
+- **World:** 1 unit = 1 voxel. x east, z south, y up. 6×5 blocks of 106×76 (three houses per row), streets 22 wide,
+  city walls 24 tall just outside the outer street (`WALL` holds the walkway lines sentries patrol). Everything outside
+  `CITY_R` is countryside; `occupied(x,z)` says where hills/forest can't go and `groundH(x,z)` is the hill height
+  (0 in the city) — anything standing in the countryside should add it.
+- **Crowds:** each walker looks ~7 units ahead (`steer` in `sim.js`): it eases behind someone walking its way (and drifts
+  past if they're slower), veers right around oncoming or standing people, and briefly waits only when right on
+  someone's heels. Collision circles (2.4 for adults) are the hard backstop. Health check numbers worth keeping:
+  close pairs (<3.2 apart) in the single digits, average walking speed ≳ 50%, no NaN positions.
 - **Models:** Voxer conventions — front faces **+Z**; placed by **grid center in x/z, y = 0 at the grid floor**
   (`meshVoxels` pivot "base"). Rotation is in quarter turns (`rot` 1 = front faces +x). Vehicles and boats
   face **+X**. Houses (40³ grid): door centered at x=20, front wall z=27, platform edge z=31 → door is

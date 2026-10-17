@@ -1,7 +1,7 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, STREET, BW, BH, block, FORT, PLAZA, CENTER, CITY, GATE_X, WALL_S, RIVER, PADDIES, WX, WZ, isStreet } from "./world.js";
+import { rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, FORT, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 const NC = COLS + 1, NR = ROWS + 1, NN = NC * NR, nid = (c, r) => r * NC + c;
@@ -57,11 +57,13 @@ export function createSim(W) {
   }
   const PLAZA_NODES = [nid(2, 2), nid(3, 2), nid(4, 2), nid(2, 3), nid(3, 3), nid(4, 3)];
   const STALLS = [];
-  for (const s of W.stalls) for (const ox of [-6, 0, 6]) { const p = { x: s.x + ox, z: s.z + s.front * 9 }; let bn = PLAZA_NODES[0], bd = 1e9; for (const n of PLAZA_NODES) { const d = hyp(p, NODES[n]); if (d < bd) { bd = d; bn = n; } } STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: nodeAnchor(bn), approach: [p], hide: false }); }
+  // shoppers enter the market from the side street level with their stall (spreads traffic along the plaza edges)
+  for (const s of W.stalls) for (const ox of [-6, 0, 6]) { const p = { x: s.x + ox, z: s.z + s.front * 9 }, c = p.x < CENTER.x ? 2 : 4;
+    STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: segAnchor(SX[c], p.z, nid(c, 2), nid(c, 3)), approach: [p], hide: false }); }
   const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[2], nid(0, 2), nid(1, 2)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true };
   const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(3, 1)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true };
-  const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, 5) + rnd(2, 7), j = rnd(-4, 4);
-    FARMS.push({ kind: "farm", x: fx, z: fz, anchor: nodeAnchor(nid(3, ROWS)), approach: [{ x: GATE_X + j, z: CITY.z1 - 3 }, { x: GATE_X + j, z: WALL_S + 22 }, { x: fx, z: fz }], hide: false }); }
+  const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = rnd(-4, 4);
+    FARMS.push({ kind: "farm", x: fx, z: fz, anchor: nodeAnchor(nid(3, ROWS)), approach: [{ x: GATE_X + j, z: CITY.z1 - 4 }, { x: GATE_X + j, z: CITY.z1 + 26 }, { x: fx, z: fz }], hide: false }); }
 
   // ---- entities
   const ents = [];
@@ -71,7 +73,7 @@ export function createSim(W) {
   const LIB = new Map();
   const lookFor = (arch, tweak) => { const key = arch + "|" + (tweak ? tweak.toString() : ""); let arr = LIB.get(key); if (!arr) LIB.set(key, (arr = []));
     if (arr.length < 10) { const p = genPerson(arch, R); if (tweak) tweak(p); arr.push(p); return p; } return pick(arr); };
-  const person = (arch, o = {}, tweak) => { const p = lookFor(arch, tweak); return newEnt(Object.assign({ kind: "person", look: p, name: pick(FAMS) + " " + pick(GIVEN), title: TITLES[arch] ?? "Townsperson", role: ROLE_OF[arch] ?? "resident", cr: p.item === "pole" ? 3.2 : p.kid ? 1.4 : 1.8, scale: p.kid ? 0.72 : 1 }, o)); };
+  const person = (arch, o = {}, tweak) => { const p = lookFor(arch, tweak); return newEnt(Object.assign({ kind: "person", look: p, name: pick(FAMS) + " " + pick(GIVEN), title: TITLES[arch] ?? "Townsperson", role: ROLE_OF[arch] ?? "resident", cr: p.item === "pole" ? 3.6 : p.kid ? 1.9 : 2.4, scale: p.kid ? 0.72 : 1 }, o)); };
   const at = (e, x, z) => { e.x = x; e.z = z; return e; };
 
   const stayTime = (e, pl) => { switch (pl.kind) { case "home": return pl === e.home ? rnd(4, 16) : rnd(3, 10); case "shop": return rnd(3, 8); case "inn": return rnd(4, 12); case "pagoda": return e.role === "monk" ? rnd(12, 30) : rnd(5, 12); case "fort": return rnd(5, 14); case "stall": return rnd(3, 9); case "farm": return rnd(15, 35); default: return rnd(0.5, 3); } };
@@ -81,19 +83,19 @@ export function createSim(W) {
     const r = rand(), here = e.place;
     switch (e.role) {
       case "farmer": if (here && here.kind === "farm") return [e.home, "heading home from the fields"]; if (here === e.home) return [pick(FARMS), "off to work the rice paddies"]; return [e.home, "heading home"];
-      case "merchant": if (here !== e.home && r < 0.45) return [e.home, "heading back to the shop"]; return r < 0.8 ? [pick(STALLS), "buying stock at the market"] : [randomStroll(), "out for a stroll"];
+      case "merchant": if (here !== e.home && r < 0.5) return [e.home, "heading back to the shop"]; return r < 0.7 ? [pick(STALLS), "buying stock at the market"] : [randomStroll(), "out for a stroll"];
       case "porter": return here && here.kind === "stall" ? [pick(SHOPS), "delivering goods"] : [pick(STALLS), "fetching goods from the market"];
       case "official": if (here && here.kind === "fort") return r < 0.5 ? [pick(HOUSES), "inspecting a household"] : [pick(STALLS), "checking market prices"]; return [FORTP, "reporting to the fortress"];
       case "monk": if (here !== PAGODA) return [PAGODA, "returning to the pagoda"]; return r < 0.5 ? [pick(STALLS), "collecting alms at the market"] : [randomStroll(), "wandering in contemplation"];
-      case "kid": if (here !== e.home && r < 0.3) return [e.home, "running home"]; return r < 0.65 ? [randomStroll(), "playing in the street"] : [pick(STALLS), "begging for a sweet at the market"];
+      case "kid": if (here !== e.home && r < 0.3) return [e.home, "running home"]; return r < 0.78 ? [randomStroll(), "playing in the street"] : [pick(STALLS), "begging for a sweet at the market"];
       case "dog": return r < 0.75 ? [randomStroll(), "trotting around town"] : [pick(STALLS), "looking for scraps at the market"];
     }
     if (here !== e.home && r < 0.35) return [e.home, "heading home"];
     const q = rand();
-    if (q < 0.35) return [pick(STALLS), "going to the market"];
-    if (q < 0.55) return [pick(HOMES), "visiting a friend"];
-    if (q < 0.75) return [pick(SHOPS), "going shopping"];
-    if (q < 0.81) return [PAGODA, "going to pray at the pagoda"];
+    if (q < 0.22) return [pick(STALLS), "going to the market"];
+    if (q < 0.47) return [pick(HOMES), "visiting a friend"];
+    if (q < 0.72) return [pick(SHOPS), "going shopping"];
+    if (q < 0.78) return [PAGODA, "going to pray at the pagoda"];
     return [randomStroll(), "out for a stroll"];
   }
   const goNext = (e) => { const [pl, txt] = chooseNext(e); e.dest = pl; e.activity = txt; e.path = buildPath(e, e.place, pl); e.pi = 0; };
@@ -106,15 +108,15 @@ export function createSim(W) {
   }
 
   const ARCHS = ["farmer", "farmer", "merchant", "merchant", "scholar", "official", "monk", "lady", "lady", "plain", "plain", "plain", "kid", "kid", "porter", "performer", "daoist"];
-  for (let i = 0; i < 620; i++) { const e = person(pick(ARCHS), { brain: "citizen" }); e.home = e.role === "monk" ? PAGODA : e.role === "merchant" ? pick(SHOPS) : pick(HOMES); initCitizen(e); }
+  for (let i = 0; i < 920; i++) { const e = person(pick(ARCHS), { brain: "citizen" }); e.home = e.role === "monk" ? PAGODA : e.role === "merchant" ? pick(SHOPS) : pick(HOMES); initCitizen(e); }
   for (const s of W.stalls) { const v = person("merchant", { brain: "idle", w8: 0.05, nocol: true, title: "Stall keeper", activity: "selling wares" }, (p) => { p.item = null; }); at(v, s.x, s.z - s.front * 5); v.yaw = s.front > 0 ? 0 : Math.PI; }
-  for (let i = 0; i < 26; i++) { const [a, b] = pick(EDGES), t = rnd(0.2, 0.8), hz = NODES[a].z === NODES[b].z; let x = NODES[a].x + (NODES[b].x - NODES[a].x) * t, z = NODES[a].z + (NODES[b].z - NODES[a].z) * t;
-    if (hz) z += pick([-9, 9]); else x += pick([-9, 9]); const n = chance(0.3) ? 3 : 2;
-    for (let k = 0; k < n; k++) { const g = person(pick(["lady", "plain", "merchant", "scholar", "farmer", "kid"]), { brain: "idle", w8: 0.08, activity: "gossiping with the neighbours" }); const ang = (k / n) * Math.PI * 2; at(g, x + Math.cos(ang) * 3, z + Math.sin(ang) * 3); g.yaw = Math.atan2(x - g.x, z - g.z); } }
+  for (let i = 0; i < 36; i++) { const [a, b] = pick(EDGES), t = rnd(0.2, 0.8), hz = NODES[a].z === NODES[b].z; let x = NODES[a].x + (NODES[b].x - NODES[a].x) * t, z = NODES[a].z + (NODES[b].z - NODES[a].z) * t;
+    if (hz) z += pick([-10, 10]); else x += pick([-10, 10]); const n = chance(0.3) ? 3 : 2;
+    for (let k = 0; k < n; k++) { const g = person(pick(["lady", "plain", "merchant", "scholar", "farmer", "kid"]), { brain: "idle", w8: 0.08, activity: "gossiping with the neighbours" }); const ang = (k / n) * Math.PI * 2; at(g, x + Math.cos(ang) * 3.4, z + Math.sin(ang) * 3.4); g.yaw = Math.atan2(x - g.x, z - g.z); } }
 
   // soldiers
   const guard = (x, z, yaw, item = "halberd", txt = "standing guard", title = "Guard") => { const g = person("soldier", { brain: "idle", w8: 0.05, title, activity: txt }, (p) => { p.item = item; }); at(g, x, z); g.yaw = yaw; return g; };
-  for (const [x, z, y] of [[GATE_X - 10, CITY.z1 - 4, Math.PI], [GATE_X + 10, CITY.z1 - 4, Math.PI], [GATE_X - 12, WALL_S + 20, 0], [GATE_X + 12, WALL_S + 20, 0],
+  for (const [x, z, y] of [[GATE_X - 12, CITY.z1 - 6, Math.PI], [GATE_X + 12, CITY.z1 - 6, Math.PI], [GATE_X - 14, CITY.z1 + 22, 0], [GATE_X + 14, CITY.z1 + 22, 0],
     [GATE_X - 12, FORT.z + FORT.d + 2, 0], [GATE_X + 12, FORT.z + FORT.d + 2, 0], [PLAZA.x + 3, PLAZA.z + 3, 0.8], [PLAZA.x + PLAZA.w - 3, PLAZA.z + 3, -0.8], [PLAZA.x + 3, PLAZA.z + PLAZA.d - 3, 2.4], [PLAZA.x + PLAZA.w - 3, PLAZA.z + PLAZA.d - 3, -2.4],
     [W.pagoda.x - 12, W.pagoda.outZ - 2, 0]]) guard(x, z, y);
   for (const n of [nid(1, 1), nid(5, 1), nid(1, 3), nid(5, 3), nid(0, 2), nid(6, 2), nid(2, 4), nid(4, 4)]) { const N = NODES[n]; guard(N.x - 12, N.z - 12, 0.8, pick(["spear", "halberd"])); guard(N.x - 8, N.z - 12, -0.8, pick(["spear", "halberd"])); }
@@ -125,27 +127,39 @@ export function createSim(W) {
   for (let sq = 0; sq < 2; sq++) { const lead = person("soldier", { brain: "drive", speed: 8, trail: [], w8: 0.3, lx: rnd(-4, 4), lz: rnd(-4, 4), title: "Patrol captain", activity: "leading a patrol" }, (p) => { p.item = "flag"; });
     const s0 = pick(EDGES); at(lead, NODES[s0[0]].x, NODES[s0[0]].z);
     for (let k = 1; k <= 4; k++) { const f = person("soldier", { brain: "follow", leader: lead, k, speed: 8, cr: 1.5, title: "Soldier", activity: "on patrol" }, (p) => { p.item = "spear"; }); at(f, lead.x - k * 4, lead.z); } }
-  for (let i = 0; i < 10; i++) { const [a, b, wz] = W.walls.runs[i % 3], x = rnd(a, b); const s = person("soldier", { brain: "pace", speed: 4, ax: "x", a0: Math.max(a, x - 60), a1: Math.min(b, x + 60), fixed: wz, y: 12, nocol: true, title: "Sentry", activity: "keeping watch from the wall" }, (p) => { p.item = pick(["spear", "flag", "halberd"]); }); at(s, x, wz); }
+  for (const beat of W.beats) for (let k = 0; k < (beat.a1 - beat.a0 > 150 ? 3 : 2); k++) { const t = rnd(beat.a0, beat.a1);
+    const s = person("soldier", { brain: "pace", speed: rnd(4, 6), ax: beat.ax, a0: beat.a0, a1: beat.a1, fixed: beat.fixed, y: WALL.h, nocol: true, title: "Sentry", activity: "patrolling the city wall" }, (p) => { p.item = pick(["spear", "halberd", "flag"]); });
+    if (beat.ax === "x") at(s, t, beat.fixed); else at(s, beat.fixed, t); }
+  for (const tw of W.towers) { const s = person("soldier", { brain: "idle", y: 34, nocol: true, title: "Lookout", activity: "keeping watch from a tower" }, (p) => { p.item = "spear"; }); at(s, tw.x + rnd(-5, 5), tw.z + rnd(-5, 5)); s.yaw = rnd(0, 6.28); }
 
   // vehicles (models from Voxer; forward = +x)
   const VEH = { rickshaw: ["Rickshaw", "carrying a passenger across town", [14, 18]], sedan: ["Sedan chair", "bearing a noble through the streets", [7, 9]], oxcart: ["Ox cart", "hauling goods to market", [5, 6]], barrow: ["Wheelbarrow", "pushing a load of produce", [7, 9]] };
-  for (const [model, n] of [["rickshaw", 6], ["sedan", 3], ["oxcart", 5], ["barrow", 6]]) for (let i = 0; i < n; i++) { const [name, act, sp] = VEH[model];
+  for (const [model, n] of [["rickshaw", 9], ["sedan", 4], ["oxcart", 7], ["barrow", 9]]) for (let i = 0; i < n; i++) { const [name, act, sp] = VEH[model];
     const e = newEnt({ kind: "vehicle", look: { model }, brain: "drive", speed: rnd(...sp), cr: model === "barrow" ? 3 : 5, w8: 0.15, hop: 0.3, lx: rnd(-5, 5), lz: rnd(-5, 5), name, title: "", activity: act, trail: null });
     const s0 = pick(EDGES), t = rand(); at(e, NODES[s0[0]].x + (NODES[s0[1]].x - NODES[s0[0]].x) * t, NODES[s0[0]].z + (NODES[s0[1]].z - NODES[s0[0]].z) * t); }
 
   // pets & critters
-  const animal = (animal, variant, o) => newEnt(Object.assign({ kind: animal, look: { animal, variant }, cr: 1.2, hop: 1.4, name: pick(PETNAMES), title: animal === "dog" ? "Dog" : animal === "cat" ? "Cat" : "" }, o));
+  const animal = (animal, variant, o) => newEnt(Object.assign({ kind: animal, look: { animal, variant }, cr: 1.5, hop: 1.4, name: pick(PETNAMES), title: animal === "dog" ? "Dog" : animal === "cat" ? "Cat" : "" }, o));
   const citizens = ents.filter((e) => e.brain === "citizen" && e.role !== "monk");
-  for (let i = 0; i < 10; i++) { const o = pick(citizens), d = animal("dog", rndi(0, 6), { brain: "pet", owner: o, speed: 18 }); at(d, o.x - 3, o.z - 2); d.waitX = o.x; d.waitZ = o.z; }
-  for (let i = 0; i < 14; i++) { const d = animal("dog", rndi(0, 6), { brain: "citizen", role: "dog", speed: rnd(15, 20) }); initCitizen(d); }
-  for (let i = 0; i < 14; i++) { const c = animal("cat", rndi(0, 4), { brain: "cat", speed: rnd(8, 11), activity: "prowling" }); const s = randomStroll(); at(c, s.x + rnd(-15, 15), s.z + rnd(-15, 15)); c.pause = rnd(0, 8); }
-  for (let i = 0; i < 10; i++) { const h = pick(W.houses), c = animal("cat", rndi(0, 4), { brain: "idle", nocol: true, activity: "napping on a rooftop", y: h.roofY, hop: 0 }); at(c, h.x + rnd(-8, 8), h.z); c.yaw = rnd(0, 6.28); }
+  for (let i = 0; i < 14; i++) { const o = pick(citizens), d = animal("dog", rndi(0, 6), { brain: "pet", owner: o, speed: 18, cr: 1.6 }); at(d, o.x - 3, o.z - 2); d.waitX = o.x; d.waitZ = o.z; }
+  for (let i = 0; i < 18; i++) { const d = animal("dog", rndi(0, 6), { brain: "citizen", role: "dog", speed: rnd(15, 20) }); initCitizen(d); }
+  for (let i = 0; i < 20; i++) { const c = animal("cat", rndi(0, 4), { brain: "cat", speed: rnd(8, 11), activity: "prowling" }); const s = randomStroll(); at(c, s.x + rnd(-15, 15), s.z + rnd(-15, 15)); c.pause = rnd(0, 8); }
+  for (let i = 0; i < 16; i++) { const h = pick(W.houses), c = animal("cat", rndi(0, 4), { brain: "idle", nocol: true, activity: "napping on a rooftop", y: h.roofY, hop: 0 }); at(c, h.x + rnd(-8, 8), h.z); c.yaw = rnd(0, 6.28); }
   const field = (o) => { const e = newEnt(o); const p = fieldPt(e); return at(e, p.x, p.z); };
-  function fieldPt(e) { if (e.band === "paddy") { const f = pick(FARMS); return { x: f.x, z: f.z }; } let x, z; do { x = rnd(10, WX - 10); z = rnd(RIVER.zc(x) + RIVER.hw + 8, WZ - 10); } while ((x > CITY.x0 - 14 && x < CITY.x1 + 14 && z < WALL_S + 14) || PADDIES.some((p) => x > p.x && x < p.x + p.w && z > p.z && z < p.z + p.d)); return { x, z }; }
-  for (let i = 0; i < 18; i++) { const p = lookFor(pick(["farmer", "farmer", "porter", "kid"])); field({ kind: "person", look: p, brain: "field", name: pick(FAMS) + " " + pick(GIVEN), title: TITLES[p.arch], activity: "tending the fields", pauseChance: 0.4, scale: p.kid ? 0.72 : 1 }); }
-  for (let i = 0; i < 12; i++) field({ kind: "chicken", look: { animal: "chicken", variant: rndi(0, 3) }, brain: "field", speed: rnd(4, 7), cr: 0.8, hop: 0.8, pauseChance: 0.6, name: "Chicken", title: "", activity: "scratching for grain" });
-  for (let i = 0; i < 6; i++) field({ kind: "pig", look: { animal: "pig", variant: 0 }, brain: "field", speed: rnd(4, 7), cr: 2.2, hop: 0.6, pauseChance: 0.6, name: "Pig", title: "", activity: "rooting in the mud" });
-  for (let i = 0; i < 8; i++) field({ kind: "crane", look: { animal: "crane", variant: 0 }, band: "paddy", brain: "field", speed: rnd(3, 5), cr: 1.2, hop: 0.4, pauseChance: 0.8, name: "Crane", title: "", activity: "wading in the paddies" });
+  function fieldPt(e) {
+    if (e.band === "paddy") { const f = pick(FARMS); return { x: f.x, z: f.z }; }
+    if (e.home2) { const a = rnd(0, 6.28), r = rnd(e.r0 ?? 20, e.r1 ?? 70); return { x: e.home2.x + Math.cos(a) * r, z: e.home2.z + Math.sin(a) * r }; }
+    if (e.band === "fields") { const f = pick(FIELDS); return { x: rnd(f.x, f.x + f.w), z: rnd(f.z, f.z + f.d) }; }
+    let x, z, n = 0; do { x = rnd(20, WX - 20); z = rnd(RIVER.zc(x) + RIVER.hw + 12, WZ - 20); } while (occupied(x, z, 4) && ++n < 30); return { x, z }; }
+  for (let i = 0; i < 70; i++) { const p = lookFor(pick(["farmer", "farmer", "farmer", "porter", "kid", "lady", "plain"])), band = i % 3 === 0 ? "fields" : i % 3 === 1 ? "meadow" : "hamlet";
+    field({ kind: "person", look: p, brain: "field", band, home2: band === "hamlet" ? pick(HAMLETS) : null, r0: 10, r1: 60, name: pick(FAMS) + " " + pick(GIVEN), title: band === "hamlet" ? "Villager" : TITLES[p.arch], activity: band === "fields" ? "tending the crops" : band === "hamlet" ? "doing chores in the village" : "wandering the countryside", pauseChance: 0.5, cr: 2.4, scale: p.kid ? 0.72 : 1 }); }
+  for (const H of HAMLETS) { for (let i = 0; i < 4; i++) field({ kind: "cow", look: { animal: "cow", variant: pick(["spotted", "#8a5a32", "#c8a070"]) }, brain: "field", home2: { x: H.x + rnd(-40, 40), z: H.z + rnd(70, 110) }, r0: 0, r1: 28, speed: rnd(2, 4), cr: 3, hop: 0.4, pauseChance: 0.8, name: pick(PETNAMES), title: "Cow", activity: "grazing" });
+    for (let i = 0; i < 6; i++) field({ kind: "sheep", look: { animal: "sheep", variant: 0 }, brain: "field", home2: { x: H.x + rnd(-60, 60), z: H.z - rnd(70, 100) }, r0: 0, r1: 24, speed: rnd(3, 5), cr: 2.2, hop: 0.6, pauseChance: 0.75, name: pick(PETNAMES), title: "Sheep", activity: "grazing" });
+    for (let i = 0; i < 6; i++) field({ kind: "chicken", look: { animal: "chicken", variant: rndi(0, 3) }, brain: "field", home2: H, r0: 8, r1: 40, speed: rnd(4, 7), cr: 0.8, hop: 0.8, pauseChance: 0.6, name: "Chicken", title: "", activity: "scratching for grain" });
+    for (let i = 0; i < 2; i++) field({ kind: "pig", look: { animal: "pig", variant: 0 }, brain: "field", home2: H, r0: 30, r1: 55, speed: rnd(4, 7), cr: 2.2, hop: 0.6, pauseChance: 0.6, name: "Pig", title: "", activity: "rooting in the mud" }); }
+  for (let i = 0; i < 0; i++) field({ kind: "chicken", look: { animal: "chicken", variant: rndi(0, 3) }, brain: "field", speed: rnd(4, 7), cr: 0.8, hop: 0.8, pauseChance: 0.6, name: "Chicken", title: "", activity: "scratching for grain" });
+  for (let i = 0; i < 0; i++) field({ kind: "pig", look: { animal: "pig", variant: 0 }, brain: "field", speed: rnd(4, 7), cr: 2.2, hop: 0.6, pauseChance: 0.6, name: "Pig", title: "", activity: "rooting in the mud" });
+  for (let i = 0; i < 12; i++) field({ kind: "crane", look: { animal: "crane", variant: 0 }, band: "paddy", brain: "field", speed: rnd(3, 5), cr: 1.2, hop: 0.4, pauseChance: 0.8, name: "Crane", title: "", activity: "wading in the paddies" });
   // river folk: fishers on docks and banks, strollers along the south bank
   const bankZ = (x) => RIVER.zc(x) + RIVER.hw + 3;
   for (const dx of W.DOCKS) for (const ox of [-2, 2]) { const f = person(pick(["farmer", "plain", "kid"]), { brain: "idle", w8: 0.05, activity: "fishing off the dock", title: "Fisher", y: 1 }, (p) => { p.item = "rod"; }); at(f, dx + ox, RIVER.zc(dx) + 2); f.yaw = Math.PI; }
@@ -154,18 +168,43 @@ export function createSim(W) {
 
   // ambient: pigeons, boats, ducks (no collisions)
   const pigeons = []; const pigeonSpot = () => { if (chance(0.6)) { let x, z; do { x = rnd(PLAZA.x + 4, PLAZA.x + PLAZA.w - 4); z = rnd(PLAZA.z + 4, PLAZA.z + PLAZA.d - 4); } while (Math.hypot(x - CENTER.x, z - CENTER.z) < 20); return { x, z }; } const s = randomStroll(); return { x: s.x + rnd(-8, 8), z: s.z + rnd(-8, 8) }; };
-  for (let i = 0; i < 70; i++) { const s = pigeonSpot(); pigeons.push({ look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: 0, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
-  const boats = []; for (let i = 0; i < 6; i++) boats.push({ look: { model: "boat" }, x: rnd(0, WX), vx: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-5, 5), phase: rand() * 9 });
-  const ducks = []; for (let fl = 0; fl < 3; fl++) { const x0 = rnd(0, WX), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-7, 7); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
+  for (let i = 0; i < 90; i++) { const s = pigeonSpot(); pigeons.push({ look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: 0, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
+  const boats = []; for (let i = 0; i < 10; i++) boats.push({ look: { model: "boat" }, x: rnd(0, WX), vx: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-5, 5), phase: rand() * 9 });
+  const ducks = []; for (let fl = 0; fl < 5; fl++) { const x0 = rnd(0, WX), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-7, 7); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
 
   // ---- behaviour
+  const LOOK = 7;
+  /** Look ahead along the walking direction: returns [ux, uz, speedFactor]. */
+  function steer(e, ux, uz) {
+    if (!(e.speed > 0)) return [ux, uz, 1];
+    let sx = 0, sz = 0, cap = 1; const gx = Math.floor(e.x / CELL), gz = Math.floor(e.z / CELL);
+    for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) { const cell = grid.get((gx + ox) * 4096 + gz + oz); if (!cell) continue;
+      for (const j of cell) { const b = ents[j]; if (b === e || b.hidden) continue;
+        const rx = b.x - e.x, rz = b.z - e.z, along = rx * ux + rz * uz; if (along <= 0 || along > LOOK) continue;
+        const lat = rx * -uz + rz * ux, clear = e.cr + b.cr + 0.8; if (Math.abs(lat) > clear) continue;
+        const same = b.mv && !b.waiting && b.hx !== undefined ? b.hx * ux + b.hz * uz : 0;   // only follow people actually walking our way; go around anyone standing
+        if (same > 0.7) { // someone ahead going our way: fall in behind and match their pace (or wait if right on their heels)
+          if (along < clear + 2.5) { const match = Math.min(1, (b.spd ?? b.speed) / e.speed); cap = Math.min(cap, along < clear * 0.8 ? 0 : Math.max(0.3, match));
+            if (match < 0.8) { const side = lat > 0 ? -1 : 1, w = 0.5 * (1 - along / LOOK); sx += -uz * side * w; sz += ux * side * w; } }   // slower walker ahead: ease off and drift past
+        } else { // oncoming or standing still: veer away from them, keeping right when they're dead ahead
+          const w = 1 - along / LOOK, side = Math.abs(lat) < 0.5 ? 1 : -Math.sign(lat); sx += -uz * side * w * 1.4; sz += ux * side * w * 1.4;
+          if (along < clear && !b.mv) cap = Math.min(cap, 0.45); } } }
+    if (e.waitT > 1.4) cap = Math.max(cap, 0.5);   // don't queue forever
+    ux += sx; uz += sz; const n = Math.hypot(ux, uz) || 1; return [ux / n, uz / n, Number.isFinite(cap) ? cap : 1];
+  }
   const walkPath = (e, dt) => {
     if (!e.path || e.pi >= e.path.length) return true;
-    const p = e.path[e.pi], dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz), v = e.speed * dt;
-    if (d <= Math.max(e.pi === e.path.length - 1 ? (e.dest && e.dest.hide ? 4 : 2.5) : 0.8, v)) { e.x = p.x; e.z = p.z; e.pi++; e.stuck = 0; e.mv = true; return e.pi >= e.path.length; }
-    e.x += (dx / d) * v; e.z += (dz / d) * v; e.mv = true; e.face = Math.atan2(dx, dz); return false;
+    const p = e.path[e.pi], dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz);
+    if (d <= Math.max(e.pi === e.path.length - 1 ? (e.dest && e.dest.hide ? 4 : e.dest && e.dest.kind === "stall" ? 4.5 : 2.5) : 1.2, e.speed * dt)) { e.x = p.x; e.z = p.z; e.pi++; e.stuck = 0; e.mv = true; return e.pi >= e.path.length; }
+    const [ux, uz, cap] = d > 3 ? steer(e, dx / d, dz / d) : [dx / d, dz / d, 1];
+    // ease toward the allowed speed (no instant stop/start), and count as waiting when nearly stopped
+    e.cur = (e.cur ?? e.speed) + (e.speed * cap - (e.cur ?? e.speed)) * Math.min(1, dt * (cap < 1 ? 6 : 2.5));
+    if (!Number.isFinite(e.cur)) e.cur = e.speed;
+    e.spd = e.cur; e.waiting = e.waiting ? e.cur < e.speed * 0.3 : e.cur < e.speed * 0.1; e.waitT = e.waiting ? (e.waitT ?? 0) + dt : 0;   // hysteresis: no flicker
+    if (e.waiting) { e.hx = ux; e.hz = uz; return false; }   // standing in line, still facing the way they're going
+    const v = e.cur * dt; e.x += ux * v; e.z += uz * v; e.mv = true; e.hx = ux; e.hz = uz; e.face = Math.atan2(ux, uz); return false;
   };
-  const stepToward = (e, tx, tz, speed, dt, stop = 0.6) => { const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d <= stop) return true; const v = Math.min(d, speed * dt); e.x += (dx / d) * v; e.z += (dz / d) * v; e.face = Math.atan2(dx, dz); e.mv = true; return false; };
+  const stepToward = (e, tx, tz, speed, dt, stop = 0.6) => { const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d <= stop) return true; const v = Math.min(d, speed * dt); e.x += (dx / d) * v; e.z += (dz / d) * v; e.face = Math.atan2(dx, dz); e.hx = dx / d; e.hz = dz / d; e.spd = dt > 0 ? v / dt : speed; e.mv = true; return false; };
   const planDrive = (e) => { const here = nearestNode(e.x, e.z); let to; do { to = rndi(0, NN - 1); } while (to === here || DIST[here][to] < 120); const pts = [nodePt(e, here)]; let n = here; while (n !== to) { n = NEXT[n][to]; pts.push(nodePt(e, n)); } e.path = pts; e.pi = 0; };
   const BRAINS = {
     idle() {},
@@ -184,7 +223,7 @@ export function createSim(W) {
       if (walkPath(e, dt)) e.pause = rnd(3, 14); },
     field(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { e.path = [fieldPt(e)]; e.pi = 0; } if (walkPath(e, dt) && chance(e.pauseChance ?? 0.4)) e.pause = rnd(1, 5); },
     yard(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { const y = e.yard; e.path = [{ x: rnd(y.x, y.x + y.w), z: rnd(y.z, y.z + y.d) }]; e.pi = 0; } if (walkPath(e, dt) && chance(0.5)) e.pause = rnd(1, 6); },
-    pace(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.pt === undefined) e.pt = rnd(e.a0, e.a1); if (stepToward(e, e.pt, e.fixed, e.speed, dt)) { e.pt = rnd(e.a0, e.a1); e.pause = rnd(1, 6); } },
+    pace(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.pt === undefined) e.pt = rnd(e.a0, e.a1); if (e.ax === "z" ? stepToward(e, e.fixed, e.pt, e.speed, dt) : stepToward(e, e.pt, e.fixed, e.speed, dt)) { e.pt = rnd(e.a0, e.a1); e.pause = rnd(1, 6); } },
     bank(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.bt === undefined) e.bt = Math.max(30, Math.min(WX - 30, e.x + rnd(-150, 150))); const dx = e.bt - e.x; if (Math.abs(dx) < 1) { e.bt = undefined; e.pause = rnd(1, 6); return; }
       e.x += Math.sign(dx) * Math.min(e.speed * dt, Math.abs(dx)); e.z = bankZ(e.x) + e.off; e.face = dx > 0 ? Math.PI / 2 : -Math.PI / 2; e.mv = true; },
   };
@@ -216,7 +255,7 @@ export function createSim(W) {
     for (const e of ents) { e.ox = e.x; e.oz = e.z; e.mv = false; BRAINS[e.brain](e, dt); }
     collide();
     for (const e of ents) {
-      if (e.mv && e.path) { if (Math.hypot(e.x - e.ox, e.z - e.oz) < e.speed * dt * 0.3) { e.stuck += dt; if (e.stuck > 2.5) { e.stuck = 0; e.pi++; } } else e.stuck = Math.max(0, e.stuck - dt); }
+      if (e.mv && e.path && !e.waiting) { if (Math.hypot(e.x - e.ox, e.z - e.oz) < (e.spd ?? e.speed) * dt * 0.3) { e.stuck += dt; if (e.stuck > 2.5) { e.stuck = 0; e.pi++; } } else e.stuck = Math.max(0, e.stuck - dt); }
       if (e.mv && e.face !== undefined) { let d = e.face - e.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); e.yaw += d * Math.min(1, dt * 10); }
     }
     for (const g of pigeons) {
@@ -225,8 +264,8 @@ export function createSim(W) {
         else { if (g.timer < 0) { g.timer = rnd(1, 4); g.hx = g.x + rnd(-5, 5); g.hz = g.z + rnd(-5, 5); } if (g.hx !== undefined) { const dx = g.hx - g.x, dz = g.hz - g.z, d = Math.hypot(dx, dz); if (d > 0.3) { g.x += (dx / d) * Math.min(d, 4 * dt); g.z += (dz / d) * Math.min(d, 4 * dt); g.yaw = Math.atan2(dx, dz); } else g.hx = undefined; } } }
       if (g.state === "fly") { g.ft += dt / g.fd; const k = Math.min(1, g.ft); g.x = g.fx + (g.tx - g.fx) * k; g.z = g.fz + (g.tz - g.fz) * k; g.y = Math.sin(Math.PI * k) * Math.min(30, 8 + g.fd * 6); if (k >= 1) { g.state = "ground"; g.timer = rnd(2, 6); } }
     }
-    for (const b of boats) { b.x += b.vx * dt; if (b.x < -40) b.x = WX + 40; if (b.x > WX + 40) b.x = -40; b.z = RIVER.zc(b.x) + b.lane; b.yaw = b.vx > 0 ? 0 : Math.PI; }
-    for (const d of ducks) { const lx = (((d.x0 + d.dir * d.sp * T) % (WX + 60)) + (WX + 60)) % (WX + 60) - 30; d.x = lx - d.dir * d.k * 3.5; d.z = RIVER.zc(d.x) + d.lane + Math.sin(T * 1.3 + d.k) * 0.6; d.yaw = d.dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
+    for (const b of boats) { b.x += b.vx * dt; if (b.x < -500) b.x = WX + 500; if (b.x > WX + 500) b.x = -500; b.z = RIVER.zc(b.x) + b.lane; b.yaw = b.vx > 0 ? 0 : Math.PI; }
+    for (const d of ducks) { const lx = (((d.x0 + d.dir * d.sp * T) % (WX + 600)) + (WX + 600)) % (WX + 600) - 300; d.x = lx - d.dir * d.k * 3.5; d.z = RIVER.zc(d.x) + d.lane + Math.sin(T * 1.3 + d.k) * 0.6; d.yaw = d.dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
   }
   const stats = () => { let out = 0, inside = 0; for (const e of ents) if (e.kind === "person") { if (e.hidden) inside++; else out++; } return { outside: out, inside, vehicles: ents.filter((e) => e.kind === "vehicle").length, actors: ents.length + pigeons.length + boats.length + ducks.length }; };
   return { ents, pigeons, boats, ducks, step, stats, get time() { return T; } };

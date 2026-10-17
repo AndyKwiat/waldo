@@ -140,17 +140,19 @@ export function pagoda() {
   return g;
 }
 
+// City walls are 24 tall (walkway on top at y=24) — see world.js for how they're placed.
 export function cityGate() {
-  const S = 56, g = new G(S), rnd = rng(31);
-  hull(g, 6, 0, 20, 49, 15, 35, brick(rnd)); g.box(7, 15, 21, 48, 15, 34, M.stoneL);
-  crenelRing(g, 6, 49, 20, 35, 16, true);
-  tunnel(g, 24, 31, 20, 35, 8);
-  for (const x of [23, 32]) g.box(x, 0, 34, x, 8, 36, M.door);
-  for (let x = 25; x <= 30; x++) g.set(x, 13, 36, x === 27 || x === 28 ? M.gold : M.plaque);
-  walls(g, 13, 42, 22, 33, 16, 23, rnd, false);
-  for (const a of [16, 25, 34]) windowAt(g, "front", 13, 42, 22, 33, a, 18, 4, 4); for (const a of [16, 34]) windowAt(g, "back", 13, 42, 22, 33, a, 18, 4, 4);
-  beamRow(g, 13, 42, 23, 34);
-  hipRoof(g, 9, 46, 18, 37, 24);
+  const S = 64, g = new G(S), rnd = rng(31);
+  hull(g, 8, 0, 24, 55, 31, 41, brick(rnd)); g.box(9, 31, 25, 54, 31, 40, M.stoneL);
+  crenelRing(g, 8, 55, 24, 41, 32, true); crenelRing(g, 8, 55, 24, 41, 33, true);
+  tunnel(g, 27, 36, 24, 41, 14);
+  for (const x of [26, 37]) g.box(x, 0, 40, x, 14, 42, M.door);
+  for (let x = 28; x <= 35; x++) g.set(x, 22, 42, x === 31 || x === 32 ? M.gold : M.plaque);
+  for (const x of [14, 20, 43, 49]) g.box(x, 14, 41, x + 1, 17, 41, M.ink);
+  walls(g, 16, 47, 26, 39, 32, 40, rnd, false);
+  for (const a of [19, 30, 40]) windowAt(g, "front", 16, 47, 26, 39, a, 34, 4, 4); for (const a of [19, 40]) windowAt(g, "back", 16, 47, 26, 39, a, 34, 4, 4);
+  beamRow(g, 16, 47, 40, 40);
+  hipRoof(g, 12, 51, 22, 43, 41, { pearl: true });
   return g;
 }
 
@@ -176,19 +178,21 @@ export function fortGate() {
   return g;
 }
 
-export function wallSegment() {
-  const S = 24, g = new G(S), rnd = rng(5);
-  hull(g, 0, 0, 8, 21, 11, 14, brick(rnd)); g.box(0, 11, 9, 21, 11, 13, M.stoneL);
-  for (let x = 0; x <= 21; x += 2) { g.set(x, 12, 8, M.brick); g.set(x, 12, 14, M.brick); }
+export function wallSegment() { // 22 long (x 5..26), footprint z 8..16, walkway at y=24
+  const S = 32, g = new G(S), rnd = rng(5);
+  hull(g, 5, 0, 8, 26, 23, 16, brick(rnd)); g.box(5, 23, 9, 26, 23, 15, M.stoneL);
+  for (let x = 5; x <= 26; x += 2) for (const z of [8, 16]) { g.set(x, 24, z, M.brick); g.set(x, 25, z, M.brickL); }
+  for (const x of [9, 20]) for (const z of [8, 16]) g.box(x, 14, z, x, 17, z, M.ink);
+  for (let x = 5; x <= 26; x++) for (const z of [8, 16]) g.set(x, 0, z, M.stoneD);
   return g;
 }
 
-export function watchtower() {
-  const S = 32, g = new G(S), rnd = rng(6);
-  hull(g, 6, 0, 6, 25, 15, 25, brick(rnd)); g.box(7, 15, 7, 24, 15, 24, M.stoneL); crenelRing(g, 6, 25, 6, 25, 16, false);
-  for (const [x, z] of [[8, 8], [23, 8], [8, 23], [23, 23]]) g.box(x, 16, z, x, 20, z, (xx, y) => (y === 20 ? C.d : C.base));
-  for (const y of [8, 11]) { g.box(15, y, 25, 16, y + 1, 25, M.ink); g.box(15, y, 6, 16, y + 1, 6, M.ink); }
-  hipRoof(g, 6, 25, 6, 25, 21, { zs: [2, 1, 1], xs: [2, 1, 1] });
+export function watchtower() { // 28×28 body, 34 tall, pavilion on top
+  const S = 56, g = new G(S), rnd = rng(6);
+  hull(g, 14, 0, 14, 41, 33, 41, brick(rnd)); g.box(15, 33, 15, 40, 33, 40, M.stoneL); crenelRing(g, 14, 41, 14, 41, 34, false); crenelRing(g, 14, 41, 14, 41, 35, false);
+  for (const [x, z] of [[17, 17], [38, 17], [17, 38], [38, 38]]) g.box(x, 34, z, x, 40, z, (xx, y) => (y === 40 ? C.d : C.base));
+  for (const y of [12, 20, 28]) for (const [x, z] of [[27, 41], [27, 14], [14, 27], [41, 27]]) g.box(x, y, z, x + (z === 27 ? 0 : 1), y + 2, z + (z === 27 ? 1 : 0), M.ink);
+  hipRoof(g, 14, 41, 14, 41, 41, { zs: [2, 1, 1], xs: [2, 1, 1], pearl: true });
   return g;
 }
 

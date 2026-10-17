@@ -88,6 +88,12 @@ export function animalVoxels(kind, c) {
     case "chicken": box(8, 1, 7, 9, 3, 9, c); box(8, 4, 9, 9, 5, 10, c); S(8, 6, 10, "#e04a3a"); S(9, 6, 10, "#e04a3a"); S(8, 4, 11, M.orange); S(8, 0, 8, M.orange); S(9, 0, 8, M.orange); box(8, 3, 6, 9, 4, 6, dk(c)); break;
     case "duck": box(7, 0, 6, 9, 1, 10, c.body); box(7, 2, 10, 9, 3, 11, c.head); S(8, 2, 12, "#f0a020"); S(7, 3, 11, M.ink); S(9, 3, 11, M.ink); box(8, 1, 5, 8, 2, 5, dk(c.body)); break;
     case "pig": box(6, 2, 5, 10, 5, 11, "#f0a8a8"); for (const [x, z] of [[6, 5], [10, 5], [6, 11], [10, 11]]) box(x, 0, z, x, 1, z, "#d08a8a"); box(7, 3, 12, 9, 4, 12, "#e08a9a"); S(7, 5, 11, M.ink); S(9, 5, 11, M.ink); S(6, 6, 10, "#f0a8a8"); S(10, 6, 10, "#f0a8a8"); break;
+    case "cow": { const spot = c === "spotted"; const base = spot ? "#f4f0e8" : c;
+      box(6, 4, 3, 10, 8, 11, base); if (spot) { box(6, 6, 5, 6, 8, 7, "#2a2030"); box(10, 5, 8, 10, 7, 10, "#2a2030"); box(7, 8, 4, 8, 8, 6, "#2a2030"); }
+      for (const [x, z] of [[6, 3], [10, 3], [6, 11], [10, 11]]) box(x, 0, z, x, 3, z, dk(base, 0.7));
+      box(7, 6, 12, 9, 9, 14, base); box(7, 6, 15, 9, 7, 15, "#e8a8a8"); S(7, 9, 14, M.ink); S(9, 9, 14, M.ink); S(6, 10, 12, "#f0e8d0"); S(10, 10, 12, "#f0e8d0"); box(8, 5, 2, 8, 7, 2, dk(base, 0.7)); break; }
+    case "sheep": for (let y = 3; y <= 7; y++) for (let z = 5; z <= 11; z++) for (let x = 6; x <= 10; x++) if (!((x === 6 || x === 10) && (y === 3 || y === 7))) S(x, y, z, (x * 7 + y * 3 + z * 5) % 4 ? "#f4f0e4" : "#ddd6c8");
+      for (const [x, z] of [[7, 6], [9, 6], [7, 10], [9, 10]]) box(x, 0, z, x, 2, z, "#3a3440"); box(7, 5, 12, 9, 7, 13, "#4a4450"); S(7, 7, 13, "#f4f0e4"); S(9, 7, 13, "#f4f0e4"); break;
     case "crane": for (const x of [7, 9]) box(x, 0, 8, x, 5, 8, "#3a3440"); box(7, 6, 6, 9, 7, 10, "#fff4d8"); box(7, 7, 5, 9, 7, 6, "#3a3440"); box(8, 8, 10, 8, 12, 10, "#fff4d8"); box(8, 13, 10, 8, 13, 11, "#fff4d8"); S(8, 14, 10, "#e04a3a"); S(8, 13, 12, "#3a3440"); break;
   }
   return v;
