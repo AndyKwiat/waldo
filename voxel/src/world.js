@@ -335,13 +335,41 @@ function heightfield(x0, x1, z0, z1, s, H, colorAt) {
 const hash = (x, z) => { const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return s - Math.floor(s); };
 
 /** Voxel mountains beyond the river (2-voxel columns), reaching far past both edges of the world. */
+// Mountain range north of the river: irregular peaks (seeded, so the layout is stable) — a tall back range and
+// lower foothills in front, each peak with its own height, width, slope and ridge direction, plus smooth noise.
+function vnoise(x, z) { // value noise, smooth in x and z, 0..1
+  const xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = hash(xi, zi), b = hash(xi + 1, zi), c = hash(xi, zi + 1), d = hash(xi + 1, zi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const PEAKS = (() => {
+  let t = 977; const r = () => { t = (t + 0x6d2b79f5) | 0; let q = Math.imul(t ^ (t >>> 15), 1 | t); q = (q + Math.imul(q ^ (q >>> 7), 61 | q)) ^ q; return ((q ^ (q >>> 14)) >>> 0) / 4294967296; };
+  const out = [];
+  for (const [zMin, zMax, hMin, hMax, gapMin, gapMax] of [[-110, -45, 62, 125, 40, 105], [-30, 25, 18, 46, 26, 70]])
+    for (let x = -950 + r() * 60; x < WX + 950; x += gapMin + r() * (gapMax - gapMin)) {
+      const h = hMin + (hMax - hMin) * Math.pow(r(), 0.8);
+      out.push({ x, z: zMin + r() * (zMax - zMin), h, rx: h * (0.9 + r() * 1.1), rz: h * (0.7 + r() * 0.7), p: 1.1 + r() * 0.9, tilt: (r() - 0.5) * 0.8 });
+    }
+  return out.sort((p, q) => p.x - q.x);
+})();
+const PEAK_R = Math.max(...PEAKS.map((p) => Math.max(p.rx, p.rz) * 1.6));
+function mountainH(x, z) {
+  let h = 0;
+  for (const p of PEAKS) {
+    if (p.x < x - PEAK_R) continue; if (p.x > x + PEAK_R) break;
+    const dx = x - p.x, dz = z - p.z, ex = dx * Math.cos(p.tilt) + dz * Math.sin(p.tilt), ez = -dx * Math.sin(p.tilt) + dz * Math.cos(p.tilt);
+    const d = Math.hypot(ex / p.rx, ez / p.rz) * (0.85 + 0.3 * vnoise(x / 19 + p.x, z / 19)); // ragged flanks
+    if (d < 1) h = Math.max(h, p.h * Math.pow(1 - d, p.p));
+  }
+  if (h <= 0) return 0;
+  h += (vnoise(x / 11, z / 11) - 0.5) * 7 + (vnoise(x / 4.3, z / 4.3) - 0.5) * 3;
+  return Math.max(0, Math.round(h));
+}
 export function mountainGeometry() {
-  const ridgeZ = 30, H = (x, z) => {
-    const ridge = 34 + 24 * Math.sin(x / 61) + 15 * Math.sin(x / 23 + 1.3) + 9 * Math.sin(x / 9.3);
-    const fall = Math.max(0, (z - ridgeZ + 60) / 150); return Math.max(0, Math.round(ridge * (1 - fall * fall) + 5 * Math.sin(x / 13 + z / 6)));
-  };
-  return heightfield(-900, WX + 900, -120, RIVER.zc(0) - RIVER.hw - 14, 2, (x, z) => (z > RIVER.zc(x) - RIVER.hw - 12 ? 0 : H(x, z)), (h, top, x, z, C) =>
-    C.set(h > 50 + 4 * Math.sin(x / 5) ? (top ? "#f4f8ff" : "#c8d6ea") : h > 34 ? (top ? "#8aa0b0" : "#6a8090") : h > 14 ? (top ? (hash(x, z) > 0.5 ? "#4f9a5a" : "#478f52") : "#3a7a46") : top ? (hash(x, z) > 0.5 ? "#6cc04c" : "#62b446") : "#4e9a3a"));
+  return heightfield(-900, WX + 900, -170, RIVER.zc(0) - RIVER.hw - 14, 2, (x, z) => (z > RIVER.zc(x) - RIVER.hw - 12 ? 0 : mountainH(x, z)), (h, top, x, z, C) => {
+    const snow = 62 + 10 * vnoise(x / 9, z / 9), rock = 32 + 6 * vnoise(x / 7 + 50, z / 7);
+    return C.set(h > snow ? (top ? "#f4f8ff" : "#c8d6ea") : h > rock ? (top ? (hash(x, z) > 0.5 ? "#8aa0b0" : "#7e94a6") : "#6a8090") : h > 14 ? (top ? (hash(x, z) > 0.5 ? "#4f9a5a" : "#478f52") : "#3a7a46") : top ? (hash(x, z) > 0.5 ? "#6cc04c" : "#62b446") : "#4e9a3a");
+  });
 }
 /** Rolling hills from groundH, meshed at 1 voxel so trees and people sit right on them. */
 export function hillGeometry(bumps) {
