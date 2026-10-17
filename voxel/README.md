@@ -53,7 +53,11 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
   footprint (`occupied()` includes it; cats and pigeons avoid it, pigeons never fly through it). View: `statue`.
 - **Crowds:** each walker looks ~7 units ahead (`steer` in `sim.js`): it eases behind someone walking its way (and drifts
   past if they're slower), veers right around oncoming or standing people, and briefly waits only when right on
-  someone's heels. Collision circles (2.4 for adults) are the hard backstop. Health check numbers worth keeping:
+  someone's heels. Collision circles (2.4 for adults) are the hard backstop. Routes are built on centre lines and shifted
+  into a per-walker **keep-right lane** (`keepRight` in `sim.js`; narrow in alleys and doorways, sub-lanes through the
+  gates), so opposite flows don't meet head-on. Single doors that many people use (city gate, palace gatehouse, pagoda)
+  are kept clear by longer stays inside and spread-out start times — check them with the jam metric (slow walkers with
+  ≥5 others within 6) rather than average speed alone. Health check numbers worth keeping:
   close pairs (<3.2 apart) in the single digits, average walking speed ≳ 50%, no NaN positions.
 - **Models:** Voxer conventions — front faces **+Z**; placed by **grid center in x/z, y = 0 at the grid floor**
   (`meshVoxels` pivot "base"). Rotation is in quarter turns (`rot` 1 = front faces +x). Vehicles and boats

@@ -16,7 +16,8 @@ function floyd(edges) {
   for (let k = 0; k < NN; k++) for (let i = 0; i < NN; i++) { const dik = D[i][k]; if (dik >= 1e9) continue; for (let j = 0; j < NN; j++) if (dik + D[k][j] < D[i][j]) { D[i][j] = dik + D[k][j]; N[i][j] = N[i][k]; } }
   return [D, N];
 }
-const elen = (a, b, e) => (e.pts ? e.pts.reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) + 22 : Math.hypot(NODES[a].x - NODES[b].x, NODES[a].z - NODES[b].z));
+// alleys are narrow: they cost 1.2× their length + 30, so through-traffic stays on the wide streets and alleys carry local trips
+const elen = (a, b, e) => (e.pts ? e.pts.reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) * 1.2 + 30 : Math.hypot(NODES[a].x - NODES[b].x, NODES[a].z - NODES[b].z));
 const [DIST, NEXT] = floyd(EDGES.map(([a, b], i) => [a, b, elen(a, b, EDGE_LIST[i])]));
 const [VDIST, VNEXT] = floyd(EDGES.filter((_, i) => EDGE_LIST[i].type === "street").map(([a, b]) => [a, b, elen(a, b, {})]));
 const PED_NODES = [...new Set(EDGES.flat())];
@@ -32,16 +33,44 @@ const anchorPt = (e, a) => { const k = a.alley ? 0.25 : 1; return a.o === "h" ? 
 const nodePt = (e, n) => ({ x: NODES[n].x + e.lx, z: NODES[n].z + e.lz });
 /** Waypoints for walking edge n→m: the alley's winding points (with a narrow personal lane), nothing extra for streets. */
 function edgePts(e, n, m) { const info = EDGE_INFO.get(n + ":" + m); if (!info || !info.pts) return []; const pts = info.fwd ? info.pts : [...info.pts].reverse(); return pts.map((p) => ({ x: p.x, z: p.z + e.lz * 0.25 })); }
+/**
+ * Keep-right lanes: shifts a centre-line route sideways to the walker's right of travel (x east, z south: right of
+ * (dx, dz) is (-dz, dx)), mitred at corners, so people going opposite ways use opposite sides of the street instead
+ * of meeting head-on. `lane[i]` is the offset for point i (narrow in alleys).
+ */
+function keepRight(pts, lane) {
+  const n = pts.length; if (n < 2) return pts;
+  const dirs = []; for (let i = 0; i < n - 1; i++) { const dx = pts[i + 1].x - pts[i].x, dz = pts[i + 1].z - pts[i].z, d = Math.hypot(dx, dz); dirs.push(d > 1e-6 ? [dx / d, dz / d] : null); }
+  for (let i = 0; i < n - 1; i++) if (!dirs[i]) dirs[i] = dirs[i - 1] ?? dirs.slice(i + 1).find(Boolean) ?? [1, 0];
+  return pts.map((p, i) => {
+    const a = dirs[Math.max(0, i - 1)], b = dirs[Math.min(n - 2, i)], ra = [-a[1], a[0]], rb = [-b[1], b[0]];
+    let mx = ra[0] + rb[0], mz = ra[1] + rb[1]; const m = Math.hypot(mx, mz);
+    if (m < 1e-6) { mx = rb[0]; mz = rb[1]; } else { mx /= m; mz /= m; }
+    const k = lane[i] / Math.max(0.6, mx * rb[0] + mz * rb[1]);   // mitre, capped at sharp turns
+    return { ...p, x: p.x + mx * k, z: p.z + mz * k };
+  });
+}
+const CENTER_LINE = { lx: 0, lz: 0 };
+const streetLane = (e) => e.lane ?? (e.lane = 1.5 + Math.abs(e.lx) * 0.75);   // 1.5..7.5 right of the centre line
+const alleyLane = (e) => Math.min(2.2, 0.8 + Math.abs(e.lx) * 0.2);
+
 function buildPath(e, from, to) {
-  const pts = [], jx = e.lx * 0.08;
-  if (from && from.approach.length) for (let i = from.approach.length - 2; i >= 0; i--) pts.push({ x: from.approach[i].x + 2 + jx, z: from.approach[i].z }); // leave on one side of a doorway…
-  const a1 = from ? from.anchor : nodeAnchor(nearestNode(e.x, e.z)), a2 = to.anchor, A1 = anchorPt(e, a1), A2 = anchorPt(e, a2);
-  if (from && from.approach.length) pts.push(A1);
+  // The whole route (out of the doorway, along the streets, into the next doorway) is built on centre lines and then
+  // shifted into this walker's keep-right lane, so in- and outgoing flows pass on opposite sides (doorways get a narrow lane).
+  const pts = [], lanes = [], doorLane = (d) => (d.lane ? 1.2 + (d.lane - 1.2) * Math.abs(e.lx) / 8 : 1.9 + Math.abs(e.lx) * 0.04);   // wide openings: several sub-lanes
+  if (from && from.approach.length) for (let i = from.approach.length - 2; i >= 0; i--) { pts.push(from.approach[i]); lanes.push(doorLane(from)); }
+  const a1 = from ? from.anchor : nodeAnchor(nearestNode(e.x, e.z)), a2 = to.anchor, A1 = anchorPt(CENTER_LINE, a1), A2 = anchorPt(CENTER_LINE, a2);
+  // the street-network part is built on centre lines, then shifted into this walker's keep-right lane
+  const net = pts, SL = streetLane(e), AL = alleyLane(e);
+  if (from && from.approach.length) { net.push(A1); lanes.push(a1.alley ? AL : SL); }
   const same = a1.nodes.length === a2.nodes.length && a1.nodes.every((n) => a2.nodes.includes(n));
   if (!same) { let best = 1e9, b1 = a1.nodes[0], b2 = a2.nodes[0];
     for (const n1 of a1.nodes) for (const n2 of a2.nodes) { const c = hyp(A1, NODES[n1]) + DIST[n1][n2] + hyp(NODES[n2], A2); if (c < best) { best = c; b1 = n1; b2 = n2; } }
-    let n = b1; pts.push(nodePt(e, n)); let guard = 0; while (n !== b2 && guard++ < 90) { const m = NEXT[n][b2]; if (m < 0) break; pts.push(...edgePts(e, n, m)); n = m; pts.push(nodePt(e, n)); } }
-  pts.push(A2); for (const p of to.approach) pts.push({ x: p.x - 2 + jx, z: p.z });   // …and arrive on the other
+    let n = b1; net.push(nodePt(CENTER_LINE, n)); lanes.push(SL); let guard = 0;
+    while (n !== b2 && guard++ < 90) { const m = NEXT[n][b2]; if (m < 0) break; for (const q of edgePts(CENTER_LINE, n, m)) { net.push(q); lanes.push(AL); } n = m; net.push(nodePt(CENTER_LINE, n)); lanes.push(SL); } }
+  net.push(A2); lanes.push(a2.alley ? AL : SL);
+  for (const p of to.approach) { pts.push(p); lanes.push(doorLane(to)); }
+  const out = keepRight(pts, lanes).slice(); pts.length = 0; pts.push(...out);
   if (!to.hide && to.approach.length) { const L = pts[pts.length - 1]; pts[pts.length - 1] = { x: L.x + rnd(-3, 3), z: L.z + rnd(-2, 2) }; }
   return pts;
 }
@@ -72,10 +101,12 @@ export function createSim(W) {
   // shoppers enter the market from the side street level with their stall (spreads traffic along the plaza edges)
   for (const s of W.stalls) for (const ox of [-6, 0, 6]) { const p = { x: s.x + ox, z: s.z + s.front * 9 }, c = p.x < CENTER.x ? AV_C - 1 : AV_C + 1;
     STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: segAnchor(SX[c], p.z, nid(c, PLAZA_R), nid(c, PLAZA_R + 1)), approach: [p], hide: false }); }
-  const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[W.pagoda.r], nid(W.pagoda.c, W.pagoda.r), nid(W.pagoda.c + 1, W.pagoda.r)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true };
-  const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 2)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true };
-  const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = rnd(-4, 4);
-    FARMS.push({ kind: "farm", x: fx, z: fz, anchor: nodeAnchor(GATE_NODE), approach: [{ x: GATE_X + j, z: CITY.z1 - 4 }, { x: GATE_X + j, z: CITY.z1 + 26 }, { x: fx, z: fz }], hide: false }); }
+  const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[W.pagoda.r], nid(W.pagoda.c, W.pagoda.r), nid(W.pagoda.c + 1, W.pagoda.r)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true, lane: 2.6 };
+  const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 2)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true, lane: 3.8 };   // the gatehouse passage is ~12 wide
+  const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = 0;
+    FARMS.push({ kind: "farm", x: fx, z: fz, anchor: nodeAnchor(GATE_NODE), approach: [{ x: GATE_X + j, z: CITY.z1 - 4 }, { x: GATE_X + j, z: CITY.z1 + 26 }, { x: GATE_X + j, z: Math.max(CITY.z1 + 34, fz) }, { x: fx, z: fz }], hide: false, lane: 3.2 }); }
+    // farmers follow the south road to their own field's row before turning off (no single fan-out point), in keep-right
+    // lanes that fit the 10-wide gate tunnel
 
   // ---- entities
   const ents = [];
@@ -88,7 +119,7 @@ export function createSim(W) {
   const person = (arch, o = {}, tweak) => { const p = lookFor(arch, tweak); return newEnt(Object.assign({ kind: "person", look: p, name: pick(FAMS) + " " + pick(GIVEN), title: TITLES[arch] ?? "Townsperson", role: ROLE_OF[arch] ?? "resident", cr: p.item === "pole" ? 3.6 : p.kid ? 1.9 : 2.4, scale: p.kid ? 0.72 : 1 }, o)); };
   const at = (e, x, z) => { e.x = x; e.z = z; return e; };
 
-  const stayTime = (e, pl) => { switch (pl.kind) { case "home": return pl === e.home ? rnd(4, 16) : rnd(3, 10); case "shop": return rnd(3, 8); case "inn": return rnd(4, 12); case "teahouse": return rnd(5, 14); case "pagoda": return e.role === "monk" ? rnd(12, 30) : rnd(5, 12); case "fort": return rnd(5, 14); case "stall": return rnd(3, 9); case "farm": return rnd(15, 35); default: return rnd(0.5, 3); } };
+  const stayTime = (e, pl) => { switch (pl.kind) { case "home": return pl === e.home ? (e.role === "farmer" ? rnd(12, 40) : rnd(4, 16)) : rnd(3, 10); case "shop": return rnd(3, 8); case "inn": return rnd(4, 12); case "teahouse": return rnd(5, 14); case "pagoda": return e.role === "monk" ? rnd(20, 45) : rnd(10, 24); case "fort": return e.role === "official" ? rnd(25, 70) : rnd(5, 14); case "stall": return rnd(3, 9); case "farm": return rnd(50, 120); default: return rnd(0.5, 3); } };
   const insideText = (e, pl) => ({ home: pl === e.home ? "at home" : "visiting friends", shop: pl === e.home ? "minding the shop" : "browsing in a shop", inn: "having tea at the inn", teahouse: "sipping tea upstairs at the teahouse", pagoda: e.role === "monk" ? "meditating in the pagoda" : "praying at the pagoda", fort: e.role === "official" ? "holding court in the palace" : "on duty at the palace" })[pl.kind] ?? "";
   const stayText = (e, pl) => (pl.kind === "stall" ? (e.kind === "dog" ? "sniffing around the market" : e.role === "porter" ? "loading goods at a stall" : "haggling at a market stall") : pl.kind === "farm" ? "working the rice paddies" : e.kind === "dog" ? "sniffing a corner" : "taking a breather");
   function chooseNext(e) {
@@ -97,7 +128,8 @@ export function createSim(W) {
       case "farmer": if (here && here.kind === "farm") return [e.home, "heading home from the fields"]; if (here === e.home) return [pick(FARMS), "off to work the rice paddies"]; return [e.home, "heading home"];
       case "merchant": if (here !== e.home && r < 0.5) return [e.home, "heading back to the shop"]; return r < 0.7 ? [pick(STALLS), "buying stock at the market"] : [randomStroll(), "out for a stroll"];
       case "porter": return here && here.kind === "stall" ? [pick(SHOPS), "delivering goods"] : [pick(STALLS), "fetching goods from the market"];
-      case "official": if (here && here.kind === "fort") return r < 0.5 ? [pick(HOUSES), "inspecting a household"] : [pick(STALLS), "checking market prices"]; return [FORTP, "reporting to the palace"];
+      case "official": if (here && here.kind === "fort") return r < 0.5 ? [pick(HOUSES), "inspecting a household"] : [pick(STALLS), "checking market prices"];
+        if (r < 0.5) return [FORTP, "reporting to the palace"]; return here === e.home ? [pick(STALLS), "checking market prices"] : [e.home, "heading home"];   // not every errand ends at the one palace door
       case "monk": if (here !== PAGODA) return [PAGODA, "returning to the pagoda"]; return r < 0.5 ? [pick(STALLS), "collecting alms at the market"] : [randomStroll(), "wandering in contemplation"];
       case "kid": if (here !== e.home && r < 0.3) return [e.home, "running home"]; return r < 0.78 ? [randomStroll(), "playing in the street"] : [pick(STALLS), "begging for a sweet at the market"];
       case "dog": return r < 0.75 ? [randomStroll(), "trotting around town"] : [pick(STALLS), "looking for scraps at the market"];
@@ -114,7 +146,7 @@ export function createSim(W) {
   const goNext = (e) => { const [pl, txt] = chooseNext(e); e.dest = pl; e.activity = txt; e.path = buildPath(e, e.place, pl); e.pi = 0; };
   const arrive = (e) => { const pl = e.dest; e.place = pl; e.path = null; if (pl.hide) { e.hidden = true; e.timer = stayTime(e, pl); e.activity = insideText(e, pl); } else { e.pause = stayTime(e, pl); e.activity = stayText(e, pl); } };
   function initCitizen(e) {
-    if (e.role === "farmer" && chance(0.5)) { const f = pick(FARMS); e.place = e.dest = f; at(e, f.x, f.z); e.pause = rnd(1, 25); e.activity = "working the rice paddies"; return; }
+    if (e.role === "farmer" && chance(0.5)) { const f = pick(FARMS); e.place = e.dest = f; at(e, f.x, f.z); e.pause = rnd(1, 120); e.activity = "working the rice paddies"; return; }   // spread over a whole shift: no rush hour at the gate
     if (e.home && chance(0.2)) { e.place = e.dest = e.home; at(e, e.home.x, e.home.z); e.hidden = true; e.timer = rnd(0, 14); e.activity = insideText(e, e.home); return; }
     const s = randomStroll(); e.place = s; const ap = anchorPt(e, s.anchor); at(e, ap.x, ap.z); goNext(e);
     const k = rndi(0, Math.max(0, e.path.length - 2)); e.pi = k; at(e, e.path[k].x + rnd(-1, 1), e.path[k].z + rnd(-1, 1));
@@ -198,8 +230,9 @@ export function createSim(W) {
         const lat = rx * -uz + rz * ux, clear = e.cr + b.cr + 0.8; if (Math.abs(lat) > clear) continue;
         const same = b.mv && !b.waiting && b.hx !== undefined ? b.hx * ux + b.hz * uz : 0;   // only follow people actually walking our way; go around anyone standing
         if (same > 0.7) { // someone ahead going our way: fall in behind and match their pace (or wait if right on their heels)
-          if (along < clear + 2.5) { const match = Math.min(1, (b.spd ?? b.speed) / e.speed); cap = Math.min(cap, along < clear * 0.8 ? 0 : Math.max(0.3, match));
-            if (match < 0.8) { const side = lat > 0 ? -1 : 1, w = 0.5 * (1 - along / LOOK); sx += -uz * side * w; sz += ux * side * w; } }   // slower walker ahead: ease off and drift past
+          if (along < clear + 2.5) { const match = Math.min(1, (b.spd ?? b.speed) / e.speed);   // fall in at their pace; only stop when actually touching (no stop-go waves)
+            cap = Math.min(cap, along < e.cr + b.cr ? 0.15 : along < clear ? Math.max(0.25, match * 0.9) : Math.max(0.35, match));
+            if (match < 0.92) { const side = lat > 0 ? -1 : 1, w = 0.9 * (1 - along / LOOK); sx += -uz * side * w; sz += ux * side * w; } }   // slower walker ahead: ease off and drift past
         } else { // oncoming or standing still: veer away from them, keeping right when they're dead ahead
           const w = 1 - along / LOOK, side = Math.abs(lat) < 0.5 ? 1 : -Math.sign(lat); sx += -uz * side * w * 1.4; sz += ux * side * w * 1.4;
           if (along < clear && !b.mv) cap = Math.min(cap, 0.45); } } }
@@ -219,11 +252,14 @@ export function createSim(W) {
     const v = e.cur * dt; e.x += ux * v; e.z += uz * v; e.mv = true; e.hx = ux; e.hz = uz; e.face = Math.atan2(ux, uz); return false;
   };
   const stepToward = (e, tx, tz, speed, dt, stop = 0.6) => { const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d <= stop) return true; const v = Math.min(d, speed * dt); e.x += (dx / d) * v; e.z += (dz / d) * v; e.face = Math.atan2(dx, dz); e.hx = dx / d; e.hz = dz / d; e.spd = dt > 0 ? v / dt : speed; e.mv = true; return false; };
-  const planDrive = (e) => { const here = nearestNode(e.x, e.z, VEH_NODES); let to, tries = 0; do { to = pick(VEH_NODES); } while ((to === here || VDIST[here][to] < 120) && ++tries < 50); const pts = [nodePt(e, here)]; let n = here, g = 0; while (n !== to && g++ < 90) { n = VNEXT[n][to]; if (n < 0) break; pts.push(nodePt(e, n)); } e.path = pts; e.pi = 0; };
+  const planDrive = (e) => { const here = nearestNode(e.x, e.z, VEH_NODES); let to, tries = 0; do { to = pick(VEH_NODES); } while ((to === here || VDIST[here][to] < 120) && ++tries < 50); const pts = [nodePt(CENTER_LINE, here)]; let n = here, g = 0; while (n !== to && g++ < 90) { n = VNEXT[n][to]; if (n < 0) break; pts.push(nodePt(CENTER_LINE, n)); } e.path = keepRight(pts, pts.map(() => streetLane(e))); e.pi = 0; };
   const BRAINS = {
     idle() {},
     citizen(e, dt) {
-      if (e.hidden) { e.timer -= dt; if (e.timer <= 0) { e.hidden = false; at(e, e.place.x, e.place.z); goNext(e); } return; }
+      if (e.hidden) { e.timer -= dt; if (e.timer <= 0) { e.hidden = false; const pl = e.place; goNext(e);
+        // step out of the door already in this walker's keep-right lane (not all from the door's centre point)
+        const ap = pl.approach, p0 = e.path?.[0], shift = ap && ap.length > 1 && p0 ? { x: p0.x - ap[ap.length - 2].x, z: p0.z - ap[ap.length - 2].z } : { x: 0, z: 0 };
+        at(e, pl.x + shift.x, pl.z + shift.z); } return; }
       if (e.pause > 0) { e.pause -= dt; if (e.pause <= 0) goNext(e); return; }
       if (walkPath(e, dt)) arrive(e); },
     drive(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) planDrive(e);
