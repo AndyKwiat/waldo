@@ -1,6 +1,6 @@
 // Voxel scenes → three.js geometry.
 //  - decodeScene: Voxer's saved-scene format (RLE + base64, cells in (y*S+z)*S+x order, 0 = empty, n = palette[n-1])
-//  - meshVoxels: face-culled quads with per-vertex ambient occlusion baked into vertex colors
+//  - meshVoxels: face-culled, greedily merged quads with per-vertex ambient occlusion baked into vertex colors
 // Pivot: models are placed by their grid center in x/z and y = 0 at the grid floor, so every recipe's
 // coordinates map predictably into the world (see models/recipes/*.js for where doors etc. are).
 import * as THREE from "three";
@@ -44,36 +44,63 @@ const FACES = [
  */
 export function meshVoxels(grid, opts = {}) {
   const S = grid.size, cells = grid.cells, remap = opts.remap ?? {}, sc = opts.scale ?? 1;
-  const col = grid.palette.map((h) => new THREE.Color(remap[h] ?? h));
+  // palette index → unique final color id (two entries that remap to the same color may merge)
+  const uniq = new Map(), col = [], cid = grid.palette.map((h) => {
+    const hex = remap[h] ?? h; let k = uniq.get(hex);
+    if (k === undefined) { k = col.length; col.push(new THREE.Color(hex)); uniq.set(hex, k); }
+    return k;
+  });
   const at = (x, y, z) => (x < 0 || y < 0 || z < 0 || x >= S || y >= S || z >= S ? 0 : cells[(y * S + z) * S + x]);
   const pos = [], nor = [], clr = [], ind = [];
   const ox = S / 2, oy = opts.pivot === "center" ? S / 2 : 0, oz = S / 2;
-  const p = [0, 0, 0], q = [0, 0, 0];
-  for (let y = 0; y < S; y++) for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) {
-    const v = cells[(y * S + z) * S + x]; if (!v) continue;
-    const c = col[v - 1];
-    for (const f of FACES) {
-      p[0] = x; p[1] = y; p[2] = z; p[f.d] += f.s;
-      if (at(p[0], p[1], p[2])) continue;
-      const base = pos.length / 3, ao = [];
-      for (const [cu, cv] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
-        q[0] = x; q[1] = y; q[2] = z; if (f.s > 0) q[f.d] += 1; q[f.u] += cu; q[f.v] += cv;
-        pos.push((q[0] - ox) * sc, (q[1] - oy) * sc, (q[2] - oz) * sc);
-        const n = [0, 0, 0]; n[f.d] = f.s; nor.push(n[0], n[1], n[2]);
-        // ambient occlusion from the three cells touching this corner in front of the face
-        const su = cu ? 1 : -1, sv = cv ? 1 : -1;
-        const a = [p[0], p[1], p[2]], b = [p[0], p[1], p[2]], e = [p[0], p[1], p[2]];
-        a[f.u] += su; b[f.v] += sv; e[f.u] += su; e[f.v] += sv;
-        const s1 = at(a[0], a[1], a[2]) ? 1 : 0, s2 = at(b[0], b[1], b[2]) ? 1 : 0, s3 = at(e[0], e[1], e[2]) ? 1 : 0;
-        const o = s1 && s2 ? 0 : 3 - s1 - s2 - s3; ao.push(o);
-        const k = AO[o] * (f.d === 1 && f.s < 0 ? 0.8 : 1);
-        clr.push(c.r * k, c.g * k, c.b * k);
+  const p = [0, 0, 0], q = [0, 0, 0], a = [0, 0, 0], b = [0, 0, 0], e = [0, 0, 0], ao = [0, 0, 0, 0];
+  const CORNERS = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  // Greedy meshing: per face direction and slice, a mask of exposed faces keyed by (final color, 4 corner AO values).
+  // Neighbouring faces with the same key merge only along axes where their AO is constant (ao0=ao1 & ao3=ao2 along u,
+  // ao0=ao3 & ao1=ao2 along v), so the interpolated vertex colors — and the quad split — are exactly as per voxel.
+  const mask = new Int32Array(S * S);
+  for (const f of FACES) {
+    const shade = f.d === 1 && f.s < 0 ? 0.8 : 1, nx = f.d === 0 ? f.s : 0, ny = f.d === 1 ? f.s : 0, nz = f.d === 2 ? f.s : 0;
+    for (let w = 0; w < S; w++) {
+      mask.fill(0);
+      for (let vv = 0; vv < S; vv++) for (let uu = 0; uu < S; uu++) {
+        q[f.d] = w; q[f.u] = uu; q[f.v] = vv;
+        const c = cells[(q[1] * S + q[2]) * S + q[0]]; if (!c) continue;
+        p[0] = q[0]; p[1] = q[1]; p[2] = q[2]; p[f.d] += f.s;
+        if (at(p[0], p[1], p[2])) continue;
+        let key = 0;
+        for (let i = 0; i < 4; i++) {
+          // ambient occlusion from the three cells touching this corner in front of the face
+          const su = CORNERS[i][0] ? 1 : -1, sv = CORNERS[i][1] ? 1 : -1;
+          a[0] = b[0] = e[0] = p[0]; a[1] = b[1] = e[1] = p[1]; a[2] = b[2] = e[2] = p[2];
+          a[f.u] += su; b[f.v] += sv; e[f.u] += su; e[f.v] += sv;
+          const s1 = at(a[0], a[1], a[2]) ? 1 : 0, s2 = at(b[0], b[1], b[2]) ? 1 : 0, s3 = at(e[0], e[1], e[2]) ? 1 : 0;
+          key |= (s1 && s2 ? 0 : 3 - s1 - s2 - s3) << (2 * i);
+        }
+        mask[vv * S + uu] = ((cid[c - 1] + 1) << 8) | key;
       }
-      // split the quad along the brighter diagonal so AO gradients don't crease
-      const alt = ao[0] + ao[2] < ao[1] + ao[3];
-      const tri = alt ? [0, 1, 3, 1, 2, 3] : [0, 1, 2, 0, 2, 3];
-      if (f.flip) for (let i = 0; i < 6; i += 3) ind.push(base + tri[i], base + tri[i + 2], base + tri[i + 1]);
-      else for (const t of tri) ind.push(base + t);
+      for (let vv = 0; vv < S; vv++) for (let uu = 0; uu < S; uu++) {
+        const key = mask[vv * S + uu]; if (!key) continue;
+        for (let i = 0; i < 4; i++) ao[i] = (key >> (2 * i)) & 3;
+        const canU = ao[0] === ao[1] && ao[3] === ao[2], canV = ao[0] === ao[3] && ao[1] === ao[2];
+        let du = 1, dv = 1;
+        if (canU) while (uu + du < S && mask[vv * S + uu + du] === key) du++;
+        if (canV) for (; vv + dv < S; dv++) { let k = 0; while (k < du && mask[(vv + dv) * S + uu + k] === key) k++; if (k < du) break; }
+        for (let j = 0; j < dv; j++) mask.fill(0, (vv + j) * S + uu, (vv + j) * S + uu + du);
+        const c = col[(key >> 8) - 1], base = pos.length / 3;
+        for (let i = 0; i < 4; i++) {
+          q[f.d] = w + (f.s > 0 ? 1 : 0); q[f.u] = uu + CORNERS[i][0] * du; q[f.v] = vv + CORNERS[i][1] * dv;
+          pos.push((q[0] - ox) * sc, (q[1] - oy) * sc, (q[2] - oz) * sc);
+          nor.push(nx, ny, nz);
+          const k = AO[ao[i]] * shade;
+          clr.push(c.r * k, c.g * k, c.b * k);
+        }
+        // split the quad along the brighter diagonal so AO gradients don't crease
+        const alt = ao[0] + ao[2] < ao[1] + ao[3];
+        const tri = alt ? [0, 1, 3, 1, 2, 3] : [0, 1, 2, 0, 2, 3];
+        if (f.flip) for (let i = 0; i < 6; i += 3) ind.push(base + tri[i], base + tri[i + 2], base + tri[i + 1]);
+        else for (const t of tri) ind.push(base + t);
+      }
     }
   }
   const g = new THREE.BufferGeometry();

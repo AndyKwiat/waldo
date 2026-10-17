@@ -277,19 +277,49 @@ export function groundTexture() {
   return t;
 }
 
-/** Column mesher for heightmaps: top quads + exposed side quads, vertex colors from colorAt(h, isTop, x, z). Cell size `s`. */
+/** Column mesher for heightmaps: top quads + exposed side quads, vertex colors from colorAt(h, isTop, x, z). Cell size `s`.
+ *  Greedy: tops of equal height and identical color merge into rectangles; side quads with the same top, foot and color
+ *  merge along their row. Colors are flat per quad, so merging never changes how anything looks. */
 function heightfield(x0, x1, z0, z1, s, H, colorAt) {
   const pos = [], col = [], ind = [], nor = [];
-  const quad = (a, b, c2, d, n, color) => { const i = pos.length / 3; pos.push(...a, ...b, ...c2, ...d); for (let k = 0; k < 4; k++) { nor.push(...n); col.push(color.r, color.g, color.b); } ind.push(i, i + 1, i + 2, i, i + 2, i + 3); };
-  const C = new THREE.Color();
-  for (let x = x0; x < x1; x += s) for (let z = z0; z < z1; z += s) {
-    const h = H(x, z); if (h <= 0) continue;
-    quad([x, h, z], [x, h, z + s], [x + s, h, z + s], [x + s, h, z], [0, 1, 0], colorAt(h, true, x, z, C));
-    const hs = H(x, z + s); if (hs < h) quad([x, hs, z + s], [x + s, hs, z + s], [x + s, h, z + s], [x, h, z + s], [0, 0, 1], colorAt(h, false, x, z, C).multiplyScalar(0.92));
-    const hn = H(x, z - s); if (hn < h) quad([x, hn, z], [x, h, z], [x + s, h, z], [x + s, hn, z], [0, 0, -1], colorAt(h, false, x, z, C).multiplyScalar(0.8));
-    const he = H(x + s, z); if (he < h) quad([x + s, he, z], [x + s, h, z], [x + s, h, z + s], [x + s, he, z + s], [1, 0, 0], colorAt(h, false, x, z, C));
-    const hw = H(x - s, z); if (hw < h) quad([x, hw, z], [x, hw, z + s], [x, h, z + s], [x, h, z], [-1, 0, 0], colorAt(h, false, x, z, C).multiplyScalar(0.85));
+  const quad = (a, b, c2, d, n, r, g, bl) => { const i = pos.length / 3; pos.push(...a, ...b, ...c2, ...d); for (let k = 0; k < 4; k++) { nor.push(...n); col.push(r, g, bl); } ind.push(i, i + 1, i + 2, i, i + 2, i + 3); };
+  const C = new THREE.Color(), nx = Math.ceil((x1 - x0) / s), nz = Math.ceil((z1 - z0) / s), W = nx + 2;
+  // heights with a one-cell border; per-cell top color and side base color
+  const hh = new Float64Array(W * (nz + 2)), top = new Float64Array(nx * nz * 3), side = new Float64Array(nx * nz * 3);
+  for (let i = -1; i <= nx; i++) for (let j = -1; j <= nz; j++) hh[(j + 1) * W + i + 1] = H(x0 + i * s, z0 + j * s);
+  const hAt = (i, j) => hh[(j + 1) * W + i + 1];
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+    const h = hAt(i, j); if (h <= 0) continue; const x = x0 + i * s, z = z0 + j * s, o = (j * nx + i) * 3;
+    colorAt(h, true, x, z, C); top[o] = C.r; top[o + 1] = C.g; top[o + 2] = C.b;
+    colorAt(h, false, x, z, C); side[o] = C.r; side[o + 1] = C.g; side[o + 2] = C.b;
   }
+  const same = (arr, a, b) => arr[a * 3] === arr[b * 3] && arr[a * 3 + 1] === arr[b * 3 + 1] && arr[a * 3 + 2] === arr[b * 3 + 2];
+  // tops: greedy rectangles (rows along z, then grow along x)
+  const done = new Uint8Array(nx * nz);
+  const topOk = (i, j, h, c) => !done[j * nx + i] && hAt(i, j) === h && same(top, j * nx + i, c);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+    const c = j * nx + i, h = hAt(i, j); if (h <= 0 || done[c]) continue;
+    let dj = 1, di = 1;
+    while (j + dj < nz && topOk(i, j + dj, h, c)) dj++;
+    for (; i + di < nx; di++) { let k = 0; while (k < dj && topOk(i + di, j + k, h, c)) k++; if (k < dj) break; }
+    for (let a = 0; a < di; a++) for (let b = 0; b < dj; b++) done[(j + b) * nx + i + a] = 1;
+    const xa = x0 + i * s, xb = xa + di * s, za = z0 + j * s, zb = za + dj * s;
+    quad([xa, h, za], [xa, h, zb], [xb, h, zb], [xb, h, za], [0, 1, 0], top[c * 3], top[c * 3 + 1], top[c * 3 + 2]);
+  }
+  // sides: runs of cells with the same height, neighbour height and side color
+  const runs = (n, m, cell, emit) => {
+    for (let b = 0; b < m; b++) for (let a = 0; a < n;) {
+      const [i, j, ni, nj] = cell(a, b), h = hAt(i, j), hn = hAt(ni, nj);
+      if (h <= 0 || hn >= h) { a++; continue; }
+      let len = 1;
+      for (; a + len < n; len++) { const [i2, j2, ni2, nj2] = cell(a + len, b); if (hAt(i2, j2) !== h || hAt(ni2, nj2) !== hn || !same(side, j2 * nx + i2, j * nx + i)) break; }
+      const o = (j * nx + i) * 3; emit(i, j, len, h, hn, side[o], side[o + 1], side[o + 2]); a += len;
+    }
+  };
+  runs(nx, nz, (a, b) => [a, b, a, b + 1], (i, j, len, h, hs, r, g, bl) => { const xa = x0 + i * s, xb = xa + len * s, zf = z0 + (j + 1) * s; quad([xa, hs, zf], [xb, hs, zf], [xb, h, zf], [xa, h, zf], [0, 0, 1], r * 0.92, g * 0.92, bl * 0.92); });
+  runs(nx, nz, (a, b) => [a, b, a, b - 1], (i, j, len, h, hn, r, g, bl) => { const xa = x0 + i * s, xb = xa + len * s, z = z0 + j * s; quad([xa, hn, z], [xa, h, z], [xb, h, z], [xb, hn, z], [0, 0, -1], r * 0.8, g * 0.8, bl * 0.8); });
+  runs(nz, nx, (a, b) => [b, a, b + 1, a], (i, j, len, h, he, r, g, bl) => { const xf = x0 + (i + 1) * s, za = z0 + j * s, zb = za + len * s; quad([xf, he, za], [xf, h, za], [xf, h, zb], [xf, he, zb], [1, 0, 0], r, g, bl); });
+  runs(nz, nx, (a, b) => [b, a, b - 1, a], (i, j, len, h, hw, r, g, bl) => { const x = x0 + i * s, za = z0 + j * s, zb = za + len * s; quad([x, hw, za], [x, hw, zb], [x, h, zb], [x, h, za], [-1, 0, 0], r * 0.85, g * 0.85, bl * 0.85); });
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); g.setIndex(ind);
   return g;
