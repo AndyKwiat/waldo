@@ -1,7 +1,7 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
+import { rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 // ---- navigation graph from the world's street network: pedestrians use streets + alleys, vehicles streets only
@@ -181,7 +181,7 @@ export function createSim(W) {
   for (let i = 0; i < 10; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), speed: rnd(6, 9), activity: "strolling along the river" }); const x = rnd(30, WX - 30); at(e, x, bankZ(x) + e.off); }
 
   // ambient: pigeons, boats, ducks (no collisions)
-  const pigeons = []; const pigeonSpot = () => { if (chance(0.6)) { let x, z; do { x = rnd(PLAZA.x + 4, PLAZA.x + PLAZA.w - 4); z = rnd(PLAZA.z + 4, PLAZA.z + PLAZA.d - 4); } while (Math.hypot(x - CENTER.x, z - CENTER.z) < 20); return { x, z }; } const s = randomStroll(); return { x: s.x + rnd(-8, 8), z: s.z + rnd(-8, 8) }; };
+  const pigeons = []; const pigeonSpot = () => { if (chance(0.6)) { let x, z; do { x = rnd(PLAZA.x + 4, PLAZA.x + PLAZA.w - 4); z = rnd(PLAZA.z + 4, PLAZA.z + PLAZA.d - 4); } while (Math.hypot(x - CENTER.x, z - CENTER.z) < 33); return { x, z }; } const s = randomStroll(); return { x: s.x + rnd(-8, 8), z: s.z + rnd(-8, 8) }; };
   for (let i = 0; i < 140; i++) { const s = pigeonSpot(); pigeons.push({ look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: 0, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
   const boats = []; for (let i = 0; i < 10; i++) boats.push({ look: { model: "boat" }, x: rnd(0, WX), vx: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-5, 5), phase: rand() * 9 });
   const ducks = []; for (let fl = 0; fl < 5; fl++) { const x0 = rnd(0, WX), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-7, 7); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
@@ -233,7 +233,7 @@ export function createSim(W) {
     pet(e, dt) { const o = e.owner; let tx, tz; if (!o.hidden) { tx = o.x - Math.sin(o.yaw) * 4; tz = o.z - Math.cos(o.yaw) * 4; e.waitX = o.x + 3; e.waitZ = o.z; } else { tx = e.waitX; tz = e.waitZ; }
       const d = Math.hypot(tx - e.x, tz - e.z); e.activity = o.hidden ? `waiting outside for ${o.name}` : `trotting after ${o.name}`; stepToward(e, tx, tz, d > 15 ? 30 : Math.max(o.speed * 1.2, 8), dt, 1.2); },
     cat(e, dt) { if (e.pause > 0) { e.pause -= dt; e.activity = "washing a paw"; return; } e.activity = "prowling";
-      if (!e.path || e.pi >= e.path.length) { let x, z, tries = 0; do { x = e.x + rnd(-30, 30); z = e.z + rnd(-30, 30); } while ((x < CITY.x0 + 4 || x > CITY.x1 - 4 || z < CITY.z0 + 4 || z > CITY.z1 - 4) && ++tries < 10); e.path = [{ x, z }]; e.pi = 0; }
+      if (!e.path || e.pi >= e.path.length) { let x, z, tries = 0; do { x = e.x + rnd(-30, 30); z = e.z + rnd(-30, 30); } while ((x < CITY.x0 + 4 || x > CITY.x1 - 4 || z < CITY.z0 + 4 || z > CITY.z1 - 4 || onStatue(x, z, 4)) && ++tries < 10); e.path = [{ x, z }]; e.pi = 0; }
       if (walkPath(e, dt)) e.pause = rnd(3, 14); },
     field(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { e.path = [fieldPt(e)]; e.pi = 0; } if (walkPath(e, dt) && chance(e.pauseChance ?? 0.4)) e.pause = rnd(1, 5); },
     yard(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { const y = e.yard; e.path = [{ x: rnd(y.x, y.x + y.w), z: rnd(y.z, y.z + y.d) }]; e.pi = 0; } if (walkPath(e, dt) && chance(0.5)) e.pause = rnd(1, 6); },
@@ -261,6 +261,8 @@ export function createSim(W) {
       for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) { const cell = ogrid.get((ogx + ox) * 4096 + ogz + oz); if (!cell) continue;
         for (const o of cell) { const dx = a.x - o.x, dz = a.z - o.z, minD = o.r + a.cr, d = Math.hypot(dx, dz); if (d >= minD || d < 0.01) continue; const push = minD - d; a.x += (dx / d) * push; a.z += (dz / d) * push; if (a.mv) sidestep(a, -dx / d, -dz / d, push * 0.8); } } }
   }
+  /** Does the straight flight a→b pass through the statue (pigeons fly low, well under its 95-voxel height)? */
+  const crossesStatue = (ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((STATUE.x - ax) * dx + (STATUE.z - az) * dz) / L)); return Math.hypot(ax + dx * t - STATUE.x, az + dz * t - STATUE.z) < 31; };
   const anyoneNear = (x, z, r) => { const gx = Math.floor(x / CELL), gz = Math.floor(z / CELL); for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) { const cell = grid.get((gx + ox) * 4096 + gz + oz); if (cell) for (const j of cell) { const e = ents[j]; if (e.kind !== "cat" && Math.hypot(e.x - x, e.z - z) < r) return true; } } return false; };
 
   let T = 0;
@@ -274,8 +276,10 @@ export function createSim(W) {
     }
     for (const g of pigeons) {
       if (g.state === "ground") { g.timer -= dt; g.y = 0;
-        if (anyoneNear(g.x, g.z, 4) || (g.timer < 0 && chance(0.002))) { let s, tries = 0; do { s = pigeonSpot(); } while (Math.hypot(s.x - g.x, s.z - g.z) > 140 && ++tries < 12); Object.assign(g, { state: "fly", fx: g.x, fz: g.z, tx: s.x, tz: s.z, ft: 0, fd: Math.max(0.8, Math.hypot(s.x - g.x, s.z - g.z) / 30) }); g.yaw = Math.atan2(s.x - g.x, s.z - g.z); }
-        else { if (g.timer < 0) { g.timer = rnd(1, 4); g.hx = g.x + rnd(-5, 5); g.hz = g.z + rnd(-5, 5); } if (g.hx !== undefined) { const dx = g.hx - g.x, dz = g.hz - g.z, d = Math.hypot(dx, dz); if (d > 0.3) { g.x += (dx / d) * Math.min(d, 4 * dt); g.z += (dz / d) * Math.min(d, 4 * dt); g.yaw = Math.atan2(dx, dz); } else g.hx = undefined; } } }
+        if (anyoneNear(g.x, g.z, 4) || (g.timer < 0 && chance(0.002))) { let s, tries = 0; do { s = pigeonSpot(); } while ((Math.hypot(s.x - g.x, s.z - g.z) > 140 || crossesStatue(g.x, g.z, s.x, s.z)) && ++tries < 16);
+          if (crossesStatue(g.x, g.z, s.x, s.z)) { const a = Math.atan2(g.z - STATUE.z, g.x - STATUE.x) + rnd(-0.5, 0.5), r = Math.max(36, Math.hypot(g.x - STATUE.x, g.z - STATUE.z) + rnd(4, 14)); s = { x: STATUE.x + Math.cos(a) * r, z: STATUE.z + Math.sin(a) * r }; }   // never fly through the statue
+          Object.assign(g, { state: "fly", hx: undefined, fx: g.x, fz: g.z, tx: s.x, tz: s.z, ft: 0, fd: Math.max(0.8, Math.hypot(s.x - g.x, s.z - g.z) / 30) }); g.yaw = Math.atan2(s.x - g.x, s.z - g.z); }
+        else { if (g.timer < 0) { g.timer = rnd(1, 4); g.hx = g.x + rnd(-5, 5); g.hz = g.z + rnd(-5, 5); if (onStatue(g.hx, g.hz, 6)) g.hx = undefined; } if (g.hx !== undefined) { const dx = g.hx - g.x, dz = g.hz - g.z, d = Math.hypot(dx, dz); if (d > 0.3) { g.x += (dx / d) * Math.min(d, 4 * dt); g.z += (dz / d) * Math.min(d, 4 * dt); g.yaw = Math.atan2(dx, dz); } else g.hx = undefined; } } }
       if (g.state === "fly") { g.ft += dt / g.fd; const k = Math.min(1, g.ft); g.x = g.fx + (g.tx - g.fx) * k; g.z = g.fz + (g.tz - g.fz) * k; g.y = Math.sin(Math.PI * k) * Math.min(30, 8 + g.fd * 6); if (k >= 1) { g.state = "ground"; g.timer = rnd(2, 6); } }
     }
     for (const b of boats) { b.x += b.vx * dt; if (b.x < -500) b.x = WX + 500; if (b.x > WX + 500) b.x = -500; b.z = RIVER.zc(b.x) + b.lane; b.yaw = b.vx > 0 ? 0 : Math.PI; }

@@ -446,5 +446,81 @@
     "z": 107
    }
   }
+ },
+ "statue": {
+  "source": "recipes/statue.recipe.js",
+  "size": 104,
+  "voxels": 34740,
+  "bbox": {
+   "min": {
+    "x": 29,
+    "y": 0,
+    "z": 32
+   },
+   "max": {
+    "x": 75,
+    "y": 95,
+    "z": 72
+   }
+  },
+  "anchors": {
+   "base_center": {
+    "x": 52,
+    "y": 0,
+    "z": 52,
+    "note": "centre of the pedestal footprint (place the model here)"
+   },
+   "top": {
+    "x": 31,
+    "y": 95,
+    "z": 53,
+    "dir": "+y",
+    "note": "tip of the thunderbolt"
+   },
+   "head": {
+    "x": 53,
+    "y": 89,
+    "z": 52,
+    "dir": "+y",
+    "note": "crown of the head"
+   }
+  },
+  "slots": {
+   "marble": {
+    "base": "#efe9dc",
+    "colors": {
+     "base": "#efe9dc",
+     "light": "#faf7f0",
+     "dark": "#d4cec2",
+     "deep": "#b3afa8",
+     "weather": "#e6dcc6",
+     "grime": "#c9bea6"
+    }
+   },
+   "stone": {
+    "base": "#8f8576",
+    "colors": {
+     "base": "#8f8576",
+     "light": "#9e9484",
+     "dark": "#7a7266",
+     "joint": "#5e574e"
+    }
+   },
+   "gold": {
+    "base": "#e2b23a",
+    "colors": {
+     "base": "#e2b23a",
+     "light": "#f6d670",
+     "dark": "#a87a20"
+    }
+   }
+  },
+  "files": {
+   "scene": "statue.json",
+   "sheet": "sheets/statue.png",
+   "variants": {},
+   "meshes": {}
+  },
+  "warnings": []
  }
 }

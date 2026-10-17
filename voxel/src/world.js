@@ -10,7 +10,7 @@ export const rnd = (a, b) => a + rand() * (b - a), rndi = (a, b) => Math.floor(r
 
 // ---- street network. A COLS × ROWS grid of blocks with irregular column widths / row depths. Each street segment
 // between two intersections is a full "street", a narrow winding "alley" (pedestrians only), a "garden" (closed off —
-// makes T-junctions), or "none" (inside the palace / under the plaza pavilion). The palace, the market square, the
+// makes T-junctions), or "none" (inside the palace / under the plaza statue). The palace, the market square, the
 // main north–south avenue, the city ring and a few cross avenues stay a clean grid.
 export const STREET = 22, COLS = 8, ROWS = 8;
 const lr = (() => { let s = 777; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; })(); // fixed layout rng
@@ -27,6 +27,10 @@ export const PALACE = { x: block(3, 0).x, z: block(3, 0).z, w: COLW[3] + STREET 
 export const FORT = PALACE;
 export const PLAZA = { ...block(3, PLAZA_R), w: COLW[3] + STREET + COLW[4] };
 export const CENTER = { x: PLAZA.x + PLAZA.w / 2, z: PLAZA.z + PLAZA.d / 2 };
+// the colossal marble Jupiter in the middle of the market square (model "statue", 104³ grid, front faces south):
+// stepped pedestal footprint ±hx × ±hz around the centre, h = top of the thunderbolt
+export const STATUE = { x: CENTER.x, z: CENTER.z, hx: 23, hz: 20, h: 95 };
+export const onStatue = (x, z, m = 0) => Math.abs(x - STATUE.x) <= STATUE.hx + m && Math.abs(z - STATUE.z) <= STATUE.hz + m;
 export { PAGODA_BLOCK, PLAZA_R, AV_C };
 export const isSpecialBlock = (c, r) => (PAL_C.includes(c) && PAL_R.includes(r)) || (PAL_C.includes(c) && r === PLAZA_R) || (c === PAGODA_BLOCK[0] && r === PAGODA_BLOCK[1]);
 export const inRect = (x, z, R, m = 0) => x >= R.x - m && x <= R.x + R.w + m && z >= R.z - m && z <= R.z + R.d + m;
@@ -40,7 +44,7 @@ export const YARD = { x: PALACE.x + 18, z: PALACE.z + 104, w: PALACE.w - 36, d: 
 export const HSEG = [...Array(ROWS + 1)].map(() => Array(COLS).fill("street"));
 export const VSEG = [...Array(COLS + 1)].map(() => Array(ROWS).fill("street"));
 HSEG[1][3] = HSEG[1][4] = VSEG[4][0] = VSEG[4][1] = "none";   // inside the palace
-VSEG[4][PLAZA_R] = "none";                                     // the plaza's centre (pavilion)
+VSEG[4][PLAZA_R] = "none";                                     // the plaza's centre (the statue)
 const MAIN_ROWS = new Set([0, 2, PLAZA_R, PLAZA_R + 1, ROWS]), MAIN_COLS = new Set([0, AV_C, COLS]);
 const touchesSpecial = (cells) => cells.some(([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS && isSpecialBlock(c, r));
 for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "street" && !MAIN_ROWS.has(r) && !touchesSpecial([[c, r - 1], [c, r]]) && lr() < 0.38) HSEG[r][c] = "alley";
@@ -91,6 +95,7 @@ export const HAMLETS = [{ x: 150, z: CITY.z0 + 230 }, { x: CITY.x1 + 210, z: CIT
 
 /** True where countryside features (city, river, roads, paddies, fields, hamlets) leave no room for hills/forest. */
 export function occupied(x, z, m = 0) {
+  if (onStatue(x, z, m)) return true;
   if (inRect(x, z, CITY_R, m)) return true;
   if (Math.abs(z - RIVER.zc(x)) < RIVER.hw + 10 + m) return true;
   return ROADS.some((r) => inRect(x, z, r, m + 2)) || PADDIES.some((p) => inRect(x, z, p, m + 3)) || FIELDS.some((f) => inRect(x, z, f, m + 3)) || HAMLETS.some((h) => Math.hypot(x - h.x, z - h.z) < 62 + m);
@@ -185,8 +190,9 @@ export function layout() {
   for (let z = YARD.z + 4; z < P.z + P.d - 36; z += 14) for (const dx of [-14, 14]) { put("lantern_post", GATE_X + dx, z); ob(GATE_X + dx, z, 2); }
   for (let i = 0; i < 4; i++) put("target", YARD.x + YARD.w - 12, YARD.z + 8 + i * 9, 3);
   put("haystack", YARD.x + 8, YARD.z + 6, 0); put("crates", YARD.x + 24, YARD.z + 4, 1); put("jars", YARD.x + YARD.w - 40, YARD.z + 4, 0);
-  // ---- market square: pavilion, two rows of stalls, lantern posts
-  put("pavilion", CENTER.x, CENTER.z, 0); ob(CENTER.x, CENTER.z, 17);
+  // ---- market square: the giant statue of Jupiter in the middle, two rows of stalls, lantern posts
+  put("statue", STATUE.x, STATUE.z, 0, { y: 0 });
+  for (const dx of [-12, 0, 12]) for (const dz of [-9, 0, 9]) ob(STATUE.x + dx, STATUE.z + dz, 11);   // pedestal is solid: 3×3 circles cover its stepped, chamfered footprint
   for (const z of [PLAZA.z + 12, PLAZA.z + PLAZA.d - 12]) for (const x of [PLAZA.x + 24, PLAZA.x + 68, PLAZA.x + PLAZA.w - 68, PLAZA.x + PLAZA.w - 24]) {
     const north = z < CENTER.z, cloth = pick(CLOTHS), roof = pick(ROOFS);
     put("stall", x, z, north ? 0 : 2, { remap: variantRemap({ roof, cloth }), remapKey: `|${roof}|${cloth}` });
@@ -268,7 +274,9 @@ export function groundTexture() {
   { const pb = block(...PAGODA_BLOCK); F(pb.x - 2, pb.z - 2, pb.w + 4, pb.d + 4, "#d0ccc0"); F(pb.x, pb.z, pb.w, pb.d, "#6cc04c"); for (let i = 0; i < 300; i++) F(pb.x + rnd(0, pb.w - 2), pb.z + rnd(0, pb.d - 1), 1, 1, pick(GR.concat(["#ffffff", "#f8b8c8"]))); }
   F(PLAZA.x - 2, PLAZA.z - 2, PLAZA.w + 4, PLAZA.d + 4, "#c2ac80");
   for (let z = PLAZA.z; z < PLAZA.z + PLAZA.d; z += 6) for (let x = PLAZA.x + ((z / 6) % 2 ? 4 : 0); x < PLAZA.x + PLAZA.w; x += 8) F(x, z, 7, 5, pick(["#ecdcb4", "#ecdcb4", "#e6d4a8", "#f4e8c8"]));
-  for (const [r, col] of [[22, "#d0503a"], [34, "#c2ac80"], [46, "#d0503a"]]) for (let a = 0; a < Math.PI * 2; a += 0.6 / r) F(CENTER.x + Math.cos(a) * r, CENTER.z + Math.sin(a) * r, 1.5, 1.5, col);
+  for (let z = STATUE.z - 30; z < STATUE.z + 30; z += 3) for (let x = STATUE.x - 30 + ((z / 3) % 2 ? 2 : 0); x < STATUE.x + 30; x += 4)   // pale flagstone disc round the pedestal
+    if (Math.hypot(x + 1.75 - STATUE.x, z + 1.25 - STATUE.z) < 29.5) F(x, z, 3.5, 2.5, ["#d8d2c4", "#cfc8b8", "#e0dacc"][Math.floor(hash(x, z) * 3)]);
+  for (const [r, col] of [[31, "#d0503a"], [38, "#c2ac80"], [46, "#d0503a"]]) for (let a = 0; a < Math.PI * 2; a += 0.6 / r) F(CENTER.x + Math.cos(a) * r, CENTER.z + Math.sin(a) * r, 1.5, 1.5, col);
   F(PALACE.x, PALACE.z, PALACE.w, PALACE.d, "#a89a86");
   for (let z = PALACE.z; z < PALACE.z + PALACE.d; z += 5) for (let x = PALACE.x + ((z / 5) % 2 ? 5 : 0); x < PALACE.x + PALACE.w; x += 10) F(x, z, 9, 4, pick(["#d8ccb8", "#d8ccb8", "#cfc2ac", "#e4dac8"]));
   F(GATE_X - 9, PALACE.z + 90, 18, PALACE.d - 90, "#f0ece4"); for (let z = PALACE.z + 90; z < PALACE.z + PALACE.d; z += 6) F(GATE_X - 9, z, 18, 1, "#d8d0c0");

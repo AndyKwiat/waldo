@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun scripts/serve.ts",
     "models": "bun scripts/build-models.ts",
-    "shot": "bun scripts/shot.ts"
+    "shot": "bun scripts/shot.ts",
+    "statue": "cd ../../voxer && bun run recipe ../waldo/voxel/models/recipes/statue.recipe.js --out ../waldo/voxel/models --figure --views front,left,iso,iso_left,top"
   },
   "dependencies": {
     "three": "0.170.0"

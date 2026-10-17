@@ -10,12 +10,13 @@ bun install                 # three.js
 bun run dev                 # http://localhost:3010
 bun run shot -- --views town,plaza --sheet    # headless screenshots → shots/
 bun run models              # rebuild every model through Voxer → models/*.json + models/sheets/*.png
+bun run statue              # rebuild the giant statue (a Voxer recipe file, built by ../../voxer's recipe CLI)
 ```
 
 **Controls:** left-drag orbit · right-drag pan · scroll zoom · WASD move · click someone to follow them
 (orbiting keeps following; right-drag, WASD or Esc stops).
 **Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
-**URL params:** `?view=town|overview|city|district|alley|plaza|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
+**URL params:** `?view=town|overview|city|district|alley|plaza|statue|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
 fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 
 ## Layout
@@ -29,6 +30,7 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 | `src/people.js` | procedural voxel people (archetype looks) and animals |
 | `src/voxels.js` | Voxer scene decoding + face-culled greedy mesher (merges flat faces with equal color and AO) with per-vertex ambient occlusion |
 | `models/recipes/*.js` | model recipes (Voxer draw ops); `colors.js` is shared with the browser for variant re-coloring |
+| `models/recipes/statue.recipe.js` | the giant marble Jupiter in the market square — a **Voxer recipe file** (`build(ctx)`, slots, anchors), not part of the `index.js` registry; `bun run statue` builds it with Voxer's `bun run recipe` into `models/statue.json` + `models/sheets/statue.png` (and merges its `manifest.json` entry) |
 | `models/*.json` | built models in Voxer's scene format; `models/sheets/*.png` Voxer's multi-view snapshots |
 | `scripts/` | `serve.ts` static server · `shot.ts` headless screenshots · `build-models.ts` + `voxer.ts` Voxer driver |
 
@@ -45,6 +47,10 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
   (three storeys, 20 wide) stands in garden strips. All share the house door convention (door at local x=0, front
   edge ≈ +12, teahouse +10). The palace is `palace_hall` + `palace_wall`s + the `fort_gate` gatehouse, all re-coloured
   to imperial gold.
+- **Statue:** a colossal marble Jupiter (thunderbolt raised, eagle at his foot) stands on a stepped pedestal in the middle of
+  the market square, facing south down the avenue (`STATUE` in `world.js`: 104³ grid, ~95 tall, pedestal footprint
+  47×41). It replaced the old plaza pavilion. The pedestal is a 3×3 grid of obstacle circles, `onStatue(x,z,m)` marks the
+  footprint (`occupied()` includes it; cats and pigeons avoid it, pigeons never fly through it). View: `statue`.
 - **Crowds:** each walker looks ~7 units ahead (`steer` in `sim.js`): it eases behind someone walking its way (and drifts
   past if they're slower), veers right around oncoming or standing people, and briefly waits only when right on
   someone's heels. Collision circles (2.4 for adults) are the hard backstop. Health check numbers worth keeping:

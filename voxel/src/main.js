@@ -50,6 +50,7 @@ const VIEWS = {
   river: () => [[L.WHEEL.x - 40, 48, W.RIVER.zc(L.WHEEL.x) + 70], [L.WHEEL.x + 20, 4, W.RIVER.zc(L.WHEEL.x) - 4]],
   paddies: () => [[W.GATE_X - 160, 70, W.WALL_S + 150], [W.GATE_X - 160, 0, W.WALL_S + 55]],
   pagoda: () => { const b = W.block(...W.PAGODA_BLOCK); return [[b.x + 120, 80, b.z + 170], [b.x + 42, 10, b.z + 40]]; },
+  statue: () => [[W.STATUE.x + 2, 17, W.STATUE.z + 150], [W.STATUE.x - 2, 44, W.STATUE.z]],   // up the south avenue at Jupiter, who faces it
 };
 // small camera-view buttons (bottom-left); "fort" is an alias of "palace" so it gets no button
 const viewBar = document.getElementById("views");
@@ -57,10 +58,16 @@ for (const name of Object.keys(VIEWS).filter((n) => n !== "fort")) {
   const b = document.createElement("button"); b.textContent = name; b.dataset.view = name;
   b.onclick = () => setView(name); viewBar.appendChild(b);
 }
+/** Places the camera; lets it look up from below the target (statue view) by relaxing the orbit's polar limit just enough. */
+function placeCam(p, t) {
+  const polar = Math.acos(Math.max(-1, Math.min(1, (p[1] - t[1]) / Math.hypot(p[0] - t[0], p[1] - t[1], p[2] - t[2]))));
+  controls.maxPolarAngle = Math.max(1.42, polar + 0.02);
+  camera.position.set(...p); controls.target.set(...t); followed = null; controls.update();
+}
 function setView(name) {
-  for (const b of viewBar.children) b.classList.toggle("on", b.dataset.view === name); const v = VIEWS[name] ?? VIEWS.town; const [p, t] = v(); camera.position.set(...p); controls.target.set(...t); followed = null; controls.update(); }
+  for (const b of viewBar.children) b.classList.toggle("on", b.dataset.view === name); const v = VIEWS[name] ?? VIEWS.town; const [p, t] = v(); placeCam(p, t); }
 city.view = setView;
-city.cam = (pos, target) => { camera.position.set(...pos); controls.target.set(...target); followed = null; controls.update(); };
+city.cam = (pos, target) => placeCam(pos, target);
 
 // ---------- static world
 const vmat = new THREE.MeshLambertMaterial({ vertexColors: true });
