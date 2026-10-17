@@ -8,23 +8,73 @@ export const setSeed = (s) => { seed = s | 0; };
 export function rand() { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }
 export const rnd = (a, b) => a + rand() * (b - a), rndi = (a, b) => Math.floor(rnd(a, b + 1)), pick = (a) => a[Math.floor(rand() * a.length)], chance = (p) => rand() < p;
 
-// ---- street grid: COLS × ROWS blocks separated by STREET-wide streets; nodes are intersections (c, r)
-export const STREET = 22, BW = 106, BH = 76, COLS = 6, ROWS = 5;
+// ---- street network. A COLS × ROWS grid of blocks with irregular column widths / row depths. Each street segment
+// between two intersections is a full "street", a narrow winding "alley" (pedestrians only), a "garden" (closed off —
+// makes T-junctions), or "none" (inside the palace / under the plaza pavilion). The palace, the market square, the
+// main north–south avenue, the city ring and a few cross avenues stay a clean grid.
+export const STREET = 22, COLS = 8, ROWS = 8;
+const lr = (() => { let s = 777; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; })(); // fixed layout rng
+const AV_C = 4, PAL_C = [3, 4], PAL_R = [0, 1], PLAZA_R = 4, PAGODA_BLOCK = [1, 3];
+export const COLW = [...Array(COLS)].map((_, c) => (PAL_C.includes(c) ? 122 : 96 + Math.round(lr() * 22)));
+export const ROWH = [...Array(ROWS)].map((_, r) => (PAL_R.includes(r) ? 86 : r === PLAZA_R ? 80 : 70 + Math.round(lr() * 14)));
 export const X0 = 380, Z0 = 280;                       // city origin; everything outside is countryside
-export const CW = COLS * BW + (COLS + 1) * STREET, CD = ROWS * BH + (ROWS + 1) * STREET;
+export const CW = COLW.reduce((a, b) => a + b, 0) + (COLS + 1) * STREET, CD = ROWH.reduce((a, b) => a + b, 0) + (ROWS + 1) * STREET;
 export const WX = X0 * 2 + CW, WZ = Z0 + CD + 430;
-export const SX = [...Array(COLS + 1)].map((_, c) => X0 + c * (BW + STREET) + STREET / 2);
-export const SZ = [...Array(ROWS + 1)].map((_, r) => Z0 + r * (BH + STREET) + STREET / 2);
-export const block = (c, r) => ({ x: X0 + STREET + c * (BW + STREET), z: Z0 + STREET + r * (BH + STREET), w: BW, d: BH });
-export const FORT = { ...block(2, 0), w: BW * 2 + STREET };
-export const PLAZA = { ...block(2, 2), w: BW * 2 + STREET };
+export const SX = [X0 + STREET / 2]; for (let c = 0; c < COLS; c++) SX.push(SX[c] + COLW[c] + STREET);
+export const SZ = [Z0 + STREET / 2]; for (let r = 0; r < ROWS; r++) SZ.push(SZ[r] + ROWH[r] + STREET);
+export const block = (c, r) => ({ x: SX[c] + STREET / 2, z: SZ[r] + STREET / 2, w: COLW[c], d: ROWH[r] });
+export const PALACE = { x: block(3, 0).x, z: block(3, 0).z, w: COLW[3] + STREET + COLW[4], d: ROWH[0] + STREET + ROWH[1] };
+export const FORT = PALACE;
+export const PLAZA = { ...block(3, PLAZA_R), w: COLW[3] + STREET + COLW[4] };
 export const CENTER = { x: PLAZA.x + PLAZA.w / 2, z: PLAZA.z + PLAZA.d / 2 };
-export const PAGODA_BLOCK = [0, 1];
-export const isSpecialBlock = (c, r) => ((r === 0 || r === 2) && (c === 2 || c === 3)) || (c === PAGODA_BLOCK[0] && r === PAGODA_BLOCK[1]);
+export { PAGODA_BLOCK, PLAZA_R, AV_C };
+export const isSpecialBlock = (c, r) => (PAL_C.includes(c) && PAL_R.includes(r)) || (PAL_C.includes(c) && r === PLAZA_R) || (c === PAGODA_BLOCK[0] && r === PAGODA_BLOCK[1]);
 export const inRect = (x, z, R, m = 0) => x >= R.x - m && x <= R.x + R.w + m && z >= R.z - m && z <= R.z + R.d + m;
 export const CITY = { x0: X0, z0: Z0, x1: X0 + CW, z1: Z0 + CD };
 export const CITY_R = { x: X0 - 30, z: Z0 - 30, w: CW + 60, d: CD + 60 };  // city incl. walls + towers
-export const GATE_X = SX[3];
+export const GATE_X = SX[AV_C];
+// palace courtyard between the great hall and the gate (drill, archery, barracks)
+export const YARD = { x: PALACE.x + 18, z: PALACE.z + 104, w: PALACE.w - 36, d: 46 };
+
+// HSEG[r][c]: segment (c,r)–(c+1,r); VSEG[c][r]: segment (c,r)–(c,r+1)
+export const HSEG = [...Array(ROWS + 1)].map(() => Array(COLS).fill("street"));
+export const VSEG = [...Array(COLS + 1)].map(() => Array(ROWS).fill("street"));
+HSEG[1][3] = HSEG[1][4] = VSEG[4][0] = VSEG[4][1] = "none";   // inside the palace
+VSEG[4][PLAZA_R] = "none";                                     // the plaza's centre (pavilion)
+const MAIN_ROWS = new Set([0, 2, PLAZA_R, PLAZA_R + 1, ROWS]), MAIN_COLS = new Set([0, AV_C, COLS]);
+const touchesSpecial = (cells) => cells.some(([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS && isSpecialBlock(c, r));
+for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "street" && !MAIN_ROWS.has(r) && !touchesSpecial([[c, r - 1], [c, r]]) && lr() < 0.38) HSEG[r][c] = "alley";
+for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (VSEG[c][r] === "street" && !MAIN_COLS.has(c) && !touchesSpecial([[c - 1, r], [c, r]]) && lr() < 0.32) VSEG[c][r] = "garden";
+// winding centre line of an alley (stays inside its 22-wide strip)
+const ALLEY_PH = HSEG.map((row, r) => row.map((_, c) => lr() * 6.28));
+export function alleyZ(r, c, x) { const a = SX[c] + STREET / 2, b = SX[c + 1] - STREET / 2, t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return SZ[r] + 4.2 * Math.sin(Math.PI * t) * Math.sin(ALLEY_PH[r][c] + x / 13) + 1.5 * Math.sin(Math.PI * t) * Math.sin(x / 5.3); }
+/** Every walkable edge for the simulation: {a:[c,r], b:[c,r], type, pts?} (alleys carry their winding points a→b). */
+export const EDGE_LIST = [];
+for (let r = 0; r <= ROWS; r++) for (let c = 0; c < COLS; c++) { const t = HSEG[r][c]; if (t !== "street" && t !== "alley") continue;
+  const e = { a: [c, r], b: [c + 1, r], type: t }; if (t === "alley") { e.pts = []; for (let x = SX[c] + STREET / 2 + 4; x < SX[c + 1] - STREET / 2 - 2; x += 7) e.pts.push({ x, z: alleyZ(r, c, x) }); } EDGE_LIST.push(e); }
+for (let c = 0; c <= COLS; c++) for (let r = 0; r < ROWS; r++) if (VSEG[c][r] === "street") EDGE_LIST.push({ a: [c, r], b: [c, r + 1], type: "street" });
+
+/** Where a point falls in the city fabric: "street" | "alley" | "garden" | "plaza" | "block" | null (outside). */
+export function cellAt(x, z) {
+  if (x < CITY.x0 || x > CITY.x1 || z < CITY.z0 || z > CITY.z1) return null;
+  if (inRect(x, z, PLAZA)) return "plaza";
+  if (inRect(x, z, PALACE)) return "palace";
+  let c = 0; while (c < COLS && x > SX[c + 1] - STREET / 2) c++;   // column band index (block c spans SX[c]+11 .. SX[c+1]-11)
+  let r = 0; while (r < ROWS && z > SZ[r + 1] - STREET / 2) r++;
+  const inColStreet = Math.abs(x - SX[c]) <= STREET / 2 || (c < COLS && Math.abs(x - SX[c + 1]) <= STREET / 2);
+  const ci = Math.abs(x - SX[c]) <= STREET / 2 ? c : c + 1;          // nearest vertical street line index
+  const inRowStreet = Math.abs(z - SZ[r]) <= STREET / 2 || (r < ROWS && Math.abs(z - SZ[r + 1]) <= STREET / 2);
+  const ri = Math.abs(z - SZ[r]) <= STREET / 2 ? r : r + 1;
+  if (inColStreet && inRowStreet) { // intersection square: street if any street touches it
+    const touching = [HSEG[ri]?.[ci - 1], HSEG[ri]?.[ci], VSEG[ci]?.[ri - 1], VSEG[ci]?.[ri]];
+    return touching.includes("street") ? "street" : touching.includes("alley") ? "alley" : "garden"; }
+  if (inRowStreet) { const t = HSEG[ri][Math.min(c, COLS - 1)]; return t === "street" ? "street" : t === "alley" ? "alley" : "garden"; }
+  if (inColStreet) { const t = VSEG[ci][Math.min(r, ROWS - 1)]; return t === "street" ? "street" : "garden"; }
+  return "block";
+}
+export const isStreet = (x, z) => { const k = cellAt(x, z); return k === "street" || k === "plaza"; };
+
 // walls: 24 tall, 9 deep, just outside the outer street ring; walkway centres (where sentries walk):
 export const WALL = { h: 24, n: CITY.z0 - 5, s: CITY.z1 + 5, w: CITY.x0 - 5, e: CITY.x1 + 5 };
 export const WALL_S = WALL.s;
@@ -33,19 +83,12 @@ export const RIVER = { zc: (x) => 158 + 10 * Math.sin(x / 120) + 5 * Math.sin(x 
 export const ROADS = [{ x: GATE_X - 9, z: CITY.z1, w: 18, d: 4000 }, { x: -4000, z: CITY.z1 + 205, w: 8000, d: 14 }];
 export const PADDIES = [{ x: GATE_X - 340, z: CITY.z1 + 34, w: 310, d: 150 }, { x: GATE_X + 30, z: CITY.z1 + 34, w: 310, d: 150 }];
 export const FIELDS = [
-  { x: 60, z: CITY.z0 + 10, w: 120, d: 90, crop: "cabbage" }, { x: 210, z: CITY.z0 + 40, w: 110, d: 120, crop: "wheat" }, { x: 70, z: CITY.z0 + 330, w: 150, d: 100, crop: "wheat" },
-  { x: CITY.x1 + 70, z: CITY.z0 + 20, w: 130, d: 100, crop: "wheat" }, { x: CITY.x1 + 230, z: CITY.z0 + 170, w: 120, d: 110, crop: "cabbage" }, { x: CITY.x1 + 80, z: CITY.z0 + 380, w: 140, d: 90, crop: "cabbage" },
+  { x: 60, z: CITY.z0 + 10, w: 120, d: 90, crop: "cabbage" }, { x: 210, z: CITY.z0 + 40, w: 110, d: 120, crop: "wheat" }, { x: 70, z: CITY.z0 + 330, w: 150, d: 100, crop: "wheat" }, { x: 90, z: CITY.z0 + 560, w: 160, d: 110, crop: "cabbage" },
+  { x: CITY.x1 + 70, z: CITY.z0 + 20, w: 130, d: 100, crop: "wheat" }, { x: CITY.x1 + 230, z: CITY.z0 + 170, w: 120, d: 110, crop: "cabbage" }, { x: CITY.x1 + 80, z: CITY.z0 + 380, w: 140, d: 90, crop: "cabbage" }, { x: CITY.x1 + 210, z: CITY.z0 + 600, w: 130, d: 100, crop: "wheat" },
   { x: GATE_X - 330, z: CITY.z1 + 240, w: 170, d: 90, crop: "wheat" }, { x: GATE_X + 120, z: CITY.z1 + 245, w: 190, d: 80, crop: "cabbage" },
 ];
-export const HAMLETS = [{ x: 150, z: CITY.z0 + 230 }, { x: CITY.x1 + 210, z: CITY.z0 + 60 }, { x: GATE_X - 470, z: CITY.z1 + 320 }, { x: CITY.x1 + 190, z: CITY.z1 + 300 }];
+export const HAMLETS = [{ x: 150, z: CITY.z0 + 230 }, { x: CITY.x1 + 210, z: CITY.z0 + 60 }, { x: GATE_X - 470, z: CITY.z1 + 320 }, { x: CITY.x1 + 190, z: CITY.z1 + 300 }, { x: 170, z: CITY.z0 + 760 }, { x: CITY.x1 + 230, z: CITY.z0 + 450 }];
 
-export function isStreet(x, z) {
-  if (x < CITY.x0 || x > CITY.x1 || z < CITY.z0 || z > CITY.z1) return false;
-  if (inRect(x, z, PLAZA)) return true;
-  if (inRect(x, z, FORT)) return false;
-  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (inRect(x, z, block(c, r))) return false;
-  return true;
-}
 /** True where countryside features (city, river, roads, paddies, fields, hamlets) leave no room for hills/forest. */
 export function occupied(x, z, m = 0) {
   if (inRect(x, z, CITY_R, m)) return true;
@@ -78,6 +121,7 @@ export function variantRemap(o = {}) { return Object.assign({}, o.roof && rampRe
  * Places all static scenery. Returns {statics, houses, stalls, obstacles, crops, ...}: statics are
  * {model, remap, x, y, z, rot} instances (rot in quarter turns); houses carry door data for the sim.
  */
+let STRIP_DOORS = {};
 export function layout() {
   placeBumps();
   const statics = [], houses = [], obstacles = [], stalls = [], crops = [], towers = [];
@@ -87,51 +131,84 @@ export function layout() {
   const tree = (x, z, kinds = TREES) => put(pick(kinds), x, z, rndi(0, 3));
   const houseVariant = (type) => { const roof = pick(ROOFS), wall = pick(WALLS), pillar = pick(PILLARS), cloth = pick(CLOTHS); return { remap: variantRemap({ roof, wall, pillar, cloth }), remapKey: `|${roof}|${wall}|${pillar}|${cloth}` }; };
 
-  // city houses: three per row; the south row faces the street to the south, the north row faces north
-  const TYPES = ["home1", "home1", "home2", "home2", "shop", "shop", "inn"];
+  // ---- city blocks: 2–3 buildings per row (homes, shops, inns, manors); the south row faces south, the north row north
+  const TYPES = ["home1", "home1", "home2", "home2", "shop", "shop", "inn", "manor", "manor"];
+  const stripDoors = (STRIP_DOORS = {});      // "r:c" → door x's facing that street/alley strip (keep alley gardens clear)
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
     if (isSpecialBlock(c, r)) continue;
-    const b = block(c, r);
-    for (const south of [true, false]) for (const hx of [b.x + 18, b.x + 53, b.x + 88]) {
-      const type = pick(TYPES), x = hx, z = south ? b.z + b.d - 13 : b.z + 13;
+    const b = block(c, r), n = b.w >= 104 ? 3 : 2;
+    for (const south of [true, false]) for (let i = 0; i < n; i++) {
+      const type = pick(TYPES), x = Math.round(b.x + (b.w * (i + 0.5)) / n), z = south ? b.z + b.d - 13 : b.z + 13, rr = south ? r + 1 : r;
       put(type, x, z, south ? 0 : 2, houseVariant(type));
-      houses.push({ type, x, z, south, c, r, doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 7 : z - 7, roofY: type === "home2" || type === "inn" ? 29 : 23 });
+      (stripDoors[rr + ":" + c] ??= []).push(x);
+      houses.push({ type, x, z, south, c, r, doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 7 : z - 7, roofY: type === "home2" || type === "inn" ? 29 : type === "manor" ? 17 : 23 });
     }
-    for (let i = 0; i < 4; i++) tree(b.x + rnd(10, b.w - 10), b.z + rnd(32, 44));
-    if (chance(0.6)) put(pick(["well", "haystack", "crates", "jars"]), b.x + rnd(14, b.w - 14), b.z + 38, rndi(0, 3));
+    for (let i = 0; i < 3; i++) tree(b.x + rnd(8, b.w - 8), b.z + b.d / 2 + rnd(-4, 4));
+    if (chance(0.5)) put(pick(["well", "haystack", "crates", "jars"]), b.x + rnd(14, b.w - 14), b.z + b.d / 2, rndi(0, 3));
+  }
+  // closed side streets become gardens (T-junctions), often with a teahouse at one end facing the open street
+  for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
+    if (VSEG[c][r] !== "garden") continue;
+    const b = block(c, r), x = SX[c], south = HSEG[r + 1][c - 1] !== "none" && chance(0.5) || !HSEG[r][c - 1] || HSEG[r][c - 1] === "none";
+    if (chance(0.7)) {
+      const z = south ? b.z + b.d - 11 : b.z + 11;
+      put("teahouse", x, z, south ? 0 : 2, houseVariant("teahouse"));
+      houses.push({ type: "teahouse", x, z, south, c, r, node: [c, south ? r + 1 : r], doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 6 : z - 6, roofY: 37 });
+      for (let zz = south ? b.z + 6 : b.z + 26; south ? zz < b.z + b.d - 26 : zz < b.z + b.d - 6; zz += 11) tree(x + rnd(-4, 4), zz, ["bamboo", "tree_blossom", "tree_pine", "tree_round"]);
+    } else { for (let zz = b.z + 6; zz < b.z + b.d - 4; zz += 10) tree(x + rnd(-5, 5), zz, ["bamboo", "tree_blossom", "tree_round", "tree_fruit"]); put("well", x, b.z + b.d / 2, 0); }
+  }
+  // winding alleys: gardens and lanterns along both sides of the path, leaving the doorways clear
+  for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (HSEG[r][c] !== "alley") continue;
+    const doors = stripDoors[r + ":" + c] ?? [];
+    for (let x = SX[c] + STREET / 2 + 5; x < SX[c + 1] - STREET / 2 - 5; x += rnd(7, 11)) {
+      if (doors.some((d) => Math.abs(d - x) < 8)) continue;
+      const side = chance(0.5) ? 1 : -1, z = alleyZ(r, c, x) + side * rnd(6.5, 8.5);
+      if (chance(0.15)) { put("lantern_post", x, z); continue; }
+      if (chance(0.75)) tree(x, z, ["bamboo", "bamboo", "tree_blossom", "tree_round", "tree_fruit"]);
+    }
   }
   // pagoda garden
   const pb = block(...PAGODA_BLOCK), pagoda = { x: pb.x + pb.w / 2, z: pb.z + pb.d / 2 + 2 };
-  put("pagoda", pagoda.x, pagoda.z, 0); pagoda.outZ = pb.z + pb.d + 3; pagoda.inZ = pagoda.z + 8;
-  for (const [dx, dz] of [[-40, -26], [40, -26], [-42, 24], [42, 24], [-36, 0], [36, 2], [-46, -6], [46, 8]]) tree(pagoda.x + dx, pagoda.z + dz, dz > 20 ? ["tree_blossom"] : ["tree_pine", "bamboo", "tree_round"]);
-  // fortress: gate tower facing the street to the south; drill yard + archery behind it
-  const fort = { x: GATE_X, z: FORT.z + FORT.d - 22 };
-  put("fort_gate", fort.x, fort.z, 0); fort.outZ = FORT.z + FORT.d + 3; fort.inZ = fort.z + 2;
-  for (let i = 0; i < 4; i++) put("target", FORT.x + FORT.w - 20, FORT.z + 10 + i * 9, 3);
-  put("haystack", FORT.x + 12, FORT.z + 10, 0); put("crates", FORT.x + 30, FORT.z + 8, 1); put("jars", FORT.x + FORT.w - 50, FORT.z + 8, 0);
-  // plaza: pavilion, stalls in two rows, lantern posts
+  put("pagoda", pagoda.x, pagoda.z, 0); pagoda.outZ = pb.z + pb.d + 3; pagoda.inZ = pagoda.z + 8; pagoda.c = PAGODA_BLOCK[0]; pagoda.r = PAGODA_BLOCK[1] + 1;
+  for (const [dx, dz] of [[-40, -26], [40, -26], [-42, 24], [42, 24], [-36, 0], [36, 2]]) tree(pagoda.x + dx, pagoda.z + dz, dz > 20 ? ["tree_blossom"] : ["tree_pine", "bamboo", "tree_round"]);
+  // ---- the palace: red walls with gold caps, the old fortress gatehouse as its south gate, the great hall, side halls, a drill yard
+  const P = PALACE, gold = { remap: variantRemap({ roof: "#e8b830" }), remapKey: "|gold" };
+  const fort = { x: GATE_X, z: P.z + P.d - 16 };
+  put("fort_gate", fort.x, fort.z, 0, { y: 0, ...gold }); fort.outZ = P.z + P.d + 3; fort.inZ = fort.z + 2;
+  for (let x = P.x + 2; x < P.x + P.w - 12; x += 22) { put("palace_wall", x + 11, P.z + 2, 0, gold); if (Math.abs(x + 11 - GATE_X) > 62) put("palace_wall", x + 11, P.z + P.d - 3, 2, gold); }
+  for (let z = P.z + 2; z < P.z + P.d - 12; z += 22) { put("palace_wall", P.x + 2, z + 11, 1, gold); put("palace_wall", P.x + P.w - 3, z + 11, 3, gold); }
+  put("palace_hall", P.x + P.w / 2, P.z + 50, 0, gold);
+  const sideHall = { remap: variantRemap({ roof: "#e8b830", wall: "#e8d0b8", pillar: "#c02a20" }), remapKey: "|palace" };
+  for (const z of [P.z + 34, P.z + 74]) { put("home2", P.x + 26, z, 1, sideHall); put("home2", P.x + P.w - 26, z, 3, sideHall); }
+  for (const [x, z] of [[P.x + 14, P.z + 14], [P.x + P.w - 14, P.z + 14], [P.x + 14, P.z + 100], [P.x + P.w - 14, P.z + 100]]) tree(x, z, ["tree_pine"]);
+  for (let z = YARD.z + 4; z < P.z + P.d - 36; z += 14) for (const dx of [-14, 14]) { put("lantern_post", GATE_X + dx, z); ob(GATE_X + dx, z, 2); }
+  for (let i = 0; i < 4; i++) put("target", YARD.x + YARD.w - 12, YARD.z + 8 + i * 9, 3);
+  put("haystack", YARD.x + 8, YARD.z + 6, 0); put("crates", YARD.x + 24, YARD.z + 4, 1); put("jars", YARD.x + YARD.w - 40, YARD.z + 4, 0);
+  // ---- market square: pavilion, two rows of stalls, lantern posts
   put("pavilion", CENTER.x, CENTER.z, 0); ob(CENTER.x, CENTER.z, 17);
-  for (const z of [PLAZA.z + 12, PLAZA.z + PLAZA.d - 12]) for (const x of [PLAZA.x + 24, PLAZA.x + 66, PLAZA.x + PLAZA.w - 66, PLAZA.x + PLAZA.w - 24]) {
+  for (const z of [PLAZA.z + 12, PLAZA.z + PLAZA.d - 12]) for (const x of [PLAZA.x + 24, PLAZA.x + 68, PLAZA.x + PLAZA.w - 68, PLAZA.x + PLAZA.w - 24]) {
     const north = z < CENTER.z, cloth = pick(CLOTHS), roof = pick(ROOFS);
     put("stall", x, z, north ? 0 : 2, { remap: variantRemap({ roof, cloth }), remapKey: `|${roof}|${cloth}` });
     ob(x - 4, z, 5); ob(x + 4, z, 5); stalls.push({ x, z, front: north ? 1 : -1 });
   }
   for (const [x, z] of [[PLAZA.x + 4, PLAZA.z + 4], [PLAZA.x + PLAZA.w - 4, PLAZA.z + 4], [PLAZA.x + 4, PLAZA.z + PLAZA.d - 4], [PLAZA.x + PLAZA.w - 4, PLAZA.z + PLAZA.d - 4], [CENTER.x - 36, CENTER.z], [CENTER.x + 36, CENTER.z]]) { put("lantern_post", x, z); ob(x, z, 2); }
-  for (let i = 0; i < 34; i++) { const c = rndi(0, COLS), r = rndi(0, ROWS - 1), hz = chance(0.5);
-    const x = hz ? SX[c] + rnd(20, BW) : SX[c] + pick([-8, 8]), z = hz ? SZ[r] + pick([-8, 8]) : SZ[r] + rnd(20, BH);
-    if (!isStreet(x, z) || inRect(x, z, PLAZA)) continue; const m = pick(["lantern_post", "lantern_post", "jars", "crates", "haystack", "well"]); put(m, x, z, rndi(0, 3)); ob(x, z, m === "lantern_post" ? 2 : 5); }
+  // street props along the kerbs of full streets
+  for (let i = 0; i < 70; i++) { const e = pick(EDGE_LIST); if (e.type !== "street") continue; const t = rnd(0.25, 0.75), hz = e.a[1] === e.b[1];
+    const x = (hz ? SX[e.a[0]] + (SX[e.b[0]] - SX[e.a[0]]) * t : SX[e.a[0]] + pick([-8, 8])), z = hz ? SZ[e.a[1]] + pick([-8, 8]) : SZ[e.a[1]] + (SZ[e.b[1]] - SZ[e.a[1]]) * t;
+    if (cellAt(x, z) !== "street") continue; const m = pick(["lantern_post", "lantern_post", "jars", "crates", "haystack", "well"]); put(m, x, z, rndi(0, 3)); ob(x, z, m === "lantern_post" ? 2 : 5); }
 
-  // city walls (24 tall): 22-long segments, towers at corners and midpoints pushed outward, gate in the south wall
+  // ---- city walls (24 tall): 22-long segments, towers at corners and along the sides, gate in the south wall
   for (let x = CITY.x0 - 9; x < CITY.x1 + 9; x += 22) { put("wall", x + 11, CITY.z0 - 1, 0, { y: 0 }); if (Math.abs(x + 11 - GATE_X) >= 26) put("wall", x + 11, CITY.z1 + 1, 2, { y: 0 }); }
   for (let z = CITY.z0 - 9; z < CITY.z1 + 9; z += 22) { put("wall", CITY.x0 - 1, z + 11, 1, { y: 0 }); put("wall", CITY.x1 + 1, z + 11, 3, { y: 0 }); }
   put("city_gate", GATE_X, CITY.z1 + 5, 0, { y: 0 });
-  const zm = (CITY.z0 + CITY.z1) / 2;
+  const zA = SZ[3], zB = SZ[6], TX = [SX[2], SX[6]];
   for (const [x, z] of [[CITY.x0 - 14, CITY.z0 - 14], [CITY.x1 + 14, CITY.z0 - 14], [CITY.x0 - 14, CITY.z1 + 14], [CITY.x1 + 14, CITY.z1 + 14],
-    [SX[1], CITY.z0 - 14], [SX[5], CITY.z0 - 14], [SX[1], CITY.z1 + 14], [SX[5], CITY.z1 + 14], [CITY.x0 - 14, zm], [CITY.x1 + 14, zm]]) { put("tower", x, z, 0, { y: 0 }); towers.push({ x, z }); }
+    [TX[0], CITY.z0 - 14], [TX[1], CITY.z0 - 14], [TX[0], CITY.z1 + 14], [TX[1], CITY.z1 + 14], [CITY.x0 - 14, zA], [CITY.x1 + 14, zA], [CITY.x0 - 14, zB], [CITY.x1 + 14, zB]]) { put("tower", x, z, 0, { y: 0 }); towers.push({ x, z }); }
   const beats = [ // sentry walking ranges on the wall walkways, between towers
-    ...[[CITY.x0 + 2, SX[1] - 18], [SX[1] + 18, SX[5] - 18], [SX[5] + 18, CITY.x1 - 2]].map(([a0, a1]) => ({ ax: "x", a0, a1, fixed: WALL.n })),
-    ...[[CITY.x0 + 2, SX[1] - 18], [SX[1] + 18, GATE_X - 30], [GATE_X + 30, SX[5] - 18], [SX[5] + 18, CITY.x1 - 2]].map(([a0, a1]) => ({ ax: "x", a0, a1, fixed: WALL.s })),
-    ...[[CITY.z0 + 2, zm - 18], [zm + 18, CITY.z1 - 2]].flatMap(([a0, a1]) => [{ ax: "z", a0, a1, fixed: WALL.w }, { ax: "z", a0, a1, fixed: WALL.e }]),
+    ...[[CITY.x0 + 2, TX[0] - 18], [TX[0] + 18, TX[1] - 18], [TX[1] + 18, CITY.x1 - 2]].map(([a0, a1]) => ({ ax: "x", a0, a1, fixed: WALL.n })),
+    ...[[CITY.x0 + 2, TX[0] - 18], [TX[0] + 18, GATE_X - 30], [GATE_X + 30, TX[1] - 18], [TX[1] + 18, CITY.x1 - 2]].map(([a0, a1]) => ({ ax: "x", a0, a1, fixed: WALL.s })),
+    ...[[CITY.z0 + 2, zA - 18], [zA + 18, zB - 18], [zB + 18, CITY.z1 - 2]].flatMap(([a0, a1]) => [{ ax: "z", a0, a1, fixed: WALL.w }, { ax: "z", a0, a1, fixed: WALL.e }]),
   ];
 
   // countryside: hamlets of farmhouses facing a little square, crop fields, forests, scattered trees, mill + docks
@@ -172,17 +249,30 @@ export function groundTexture() {
   for (let x = 0; x < WX; x++) { const zc = RIVER.zc(x), hw = RIVER.hw; F(x, zc - hw - 5, 1, 2 * hw + 10, "#e8d8a0"); F(x, zc - hw, 1, 2 * hw, "#3a8ac8"); F(x, zc - hw / 3, 1, hw * 0.66, "#2f78b8"); }
   for (let i = 0; i < 1600; i++) { const x = rnd(0, WX); F(x, RIVER.zc(x) + rnd(-RIVER.hw + 2, RIVER.hw - 2), rndi(2, 5), 1, "#a8e0ff"); }
   for (const dx of [CITY.x0 + 140, CITY.x1 - 160]) { const zc = RIVER.zc(dx); F(dx - 5, zc - 2, 10, RIVER.hw + 8, "#8a5a32"); for (let z = zc - 1; z < zc + RIVER.hw + 6; z += 2) F(dx - 5, z, 10, 1, "#b07a44"); }
-  // city floor: stone slabs, then blocks of garden, plaza, fortress courtyard
+  // city floor: stone slabs on streets; garden strips (closed streets) and alleys with a winding paved path; blocks; plaza; palace
   F(CITY.x0, CITY.z0, CW, CD, "#b49c70");
-  for (let z = CITY.z0; z < CITY.z1; z += 4) for (let x = CITY.x0 + ((z / 4) % 2 ? 3 : 0); x < CITY.x1; x += 6) F(x, z, 5, 3, pick(["#e0cfa4", "#e0cfa4", "#d8c69a", "#e6d7b0"]));
-  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) { if ((r === 0 || r === 2) && (c === 2 || c === 3)) continue; const b = block(c, r);
+  for (let z = CITY.z0; z < CITY.z1; z += 4) for (let x = CITY.x0 + ((z / 4) % 2 ? 3 : 0); x < CITY.x1; x += 6) {
+    const k = cellAt(x + 2.5, z + 1.5);
+    if (k === "street") F(x, z, 5, 3, pick(["#e0cfa4", "#e0cfa4", "#d8c69a", "#e6d7b0"]));
+    else if (k === "alley" || k === "garden") F(x - 0.5, z - 0.5, 6, 4, pick(["#6cc04c", "#62b446", "#68bc4a", "#74c852"]));
+  }
+  for (let i = 0; i < 9000; i++) { const x = rnd(CITY.x0, CITY.x1), z = rnd(CITY.z0, CITY.z1), k = cellAt(x, z); if (k === "alley" || k === "garden") F(x, z, 1, 1, pick(["#ffffff", "#ffe050", "#ff80a0", "#4ea23a", "#90d866"])); }
+  for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "alley") {
+    for (let x = SX[c] - STREET / 2; x <= SX[c + 1] + STREET / 2; x++) { const zc = alleyZ(r, c, x); F(x, zc - 3.5, 1, 7, "#b49c70"); if (x % 3 === 0) F(x, zc - 2.5 + ((x / 3) % 2) * 2, 2, 2, pick(["#e0cfa4", "#d8c69a", "#e6d7b0"])); }
+    for (const d of (STRIP_DOORS[r + ":" + c] ?? [])) for (const s2 of [-1, 1]) { const z0 = alleyZ(r, c, d), z1 = SZ[r] + s2 * STREET / 2; F(d - 2, Math.min(z0, z1), 4, Math.abs(z1 - z0), "#c8b088"); }
+  }
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) { if (isSpecialBlock(c, r)) continue; const b = block(c, r);
     F(b.x - 2, b.z - 2, b.w + 4, b.d + 4, "#d0ccc0"); F(b.x, b.z, b.w, b.d, "#6cc04c");
     for (let i = 0; i < 320; i++) F(b.x + rnd(0, b.w - 2), b.z + rnd(0, b.d - 1), rndi(1, 2), 1, pick(GR.concat(["#4ea23a", "#90d866", "#ffffff", "#ffe050"])));
-    F(b.x + 8, b.z + 34, b.w - 16, 8, "#c8945a"); for (let x = b.x + 9; x < b.x + b.w - 9; x += 3) F(x, b.z + 35 + (x % 2), 1, 6, "#3aa848"); }
+    F(b.x + 8, b.z + b.d / 2 - 4, b.w - 16, 8, "#c8945a"); for (let x = b.x + 9; x < b.x + b.w - 9; x += 3) F(x, b.z + b.d / 2 - 3 + (x % 2), 1, 6, "#3aa848"); }
+  { const pb = block(...PAGODA_BLOCK); F(pb.x - 2, pb.z - 2, pb.w + 4, pb.d + 4, "#d0ccc0"); F(pb.x, pb.z, pb.w, pb.d, "#6cc04c"); for (let i = 0; i < 300; i++) F(pb.x + rnd(0, pb.w - 2), pb.z + rnd(0, pb.d - 1), 1, 1, pick(GR.concat(["#ffffff", "#f8b8c8"]))); }
   F(PLAZA.x - 2, PLAZA.z - 2, PLAZA.w + 4, PLAZA.d + 4, "#c2ac80");
   for (let z = PLAZA.z; z < PLAZA.z + PLAZA.d; z += 6) for (let x = PLAZA.x + ((z / 6) % 2 ? 4 : 0); x < PLAZA.x + PLAZA.w; x += 8) F(x, z, 7, 5, pick(["#ecdcb4", "#ecdcb4", "#e6d4a8", "#f4e8c8"]));
   for (const [r, col] of [[22, "#d0503a"], [34, "#c2ac80"], [46, "#d0503a"]]) for (let a = 0; a < Math.PI * 2; a += 0.6 / r) F(CENTER.x + Math.cos(a) * r, CENTER.z + Math.sin(a) * r, 1.5, 1.5, col);
-  F(FORT.x, FORT.z, FORT.w, FORT.d, "#8e8474"); for (let z = FORT.z; z < FORT.z + FORT.d; z += 3) for (let x = FORT.x + ((z / 3) % 2 ? 3 : 0); x < FORT.x + FORT.w; x += 6) F(x, z, 5, 2, pick(["#c0b6a2", "#c0b6a2", "#dcd4c2"]));
+  F(PALACE.x, PALACE.z, PALACE.w, PALACE.d, "#a89a86");
+  for (let z = PALACE.z; z < PALACE.z + PALACE.d; z += 5) for (let x = PALACE.x + ((z / 5) % 2 ? 5 : 0); x < PALACE.x + PALACE.w; x += 10) F(x, z, 9, 4, pick(["#d8ccb8", "#d8ccb8", "#cfc2ac", "#e4dac8"]));
+  F(GATE_X - 9, PALACE.z + 90, 18, PALACE.d - 90, "#f0ece4"); for (let z = PALACE.z + 90; z < PALACE.z + PALACE.d; z += 6) F(GATE_X - 9, z, 18, 1, "#d8d0c0");
+  for (const [x0, x1] of [[PALACE.x + 4, PALACE.x + 48], [PALACE.x + PALACE.w - 48, PALACE.x + PALACE.w - 4]]) { F(x0, PALACE.z + 8, x1 - x0, 92, "#6cc04c"); for (let i = 0; i < 160; i++) F(rnd(x0, x1), PALACE.z + rnd(8, 100), 1, 1, pick(GR.concat(["#ffffff", "#ffe050"]))); }
   const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }

@@ -14,7 +14,7 @@ bun run models              # rebuild every model through Voxer → models/*.jso
 
 **Controls:** left-drag orbit · right-drag pan · scroll zoom · WASD move · click someone to follow them
 (orbiting keeps following; right-drag, WASD or Esc stops).
-**URL params:** `?view=town|overview|city|plaza|street|gate|walls|fort|river|paddies|pagoda|country` · `&t=<sim seconds to
+**URL params:** `?view=town|overview|city|district|alley|plaza|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
 fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 
 ## Layout
@@ -32,10 +32,18 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 | `scripts/` | `serve.ts` static server · `shot.ts` headless screenshots · `build-models.ts` + `voxer.ts` Voxer driver |
 
 ## Conventions
-- **World:** 1 unit = 1 voxel. x east, z south, y up. 6×5 blocks of 106×76 (three houses per row), streets 22 wide,
-  city walls 24 tall just outside the outer street (`WALL` holds the walkway lines sentries patrol). Everything outside
-  `CITY_R` is countryside; `occupied(x,z)` says where hills/forest can't go and `groundH(x,z)` is the hill height
-  (0 in the city) — anything standing in the countryside should add it.
+- **World:** 1 unit = 1 voxel. x east, z south, y up. An 8×8 grid of blocks with irregular column widths / row
+  depths (`COLW`, `ROWH`), streets 22 wide. Every street segment has a type in `HSEG[r][c]` / `VSEG[c][r]`:
+  `street`, `alley` (narrow winding path, pedestrians only — `alleyZ(r,c,x)` is its centre line), `garden` (closed
+  side street → T-junction, often with a teahouse), or `none`. The palace (blocks 3–4 × rows 0–1), the market square,
+  the north–south avenue (`AV_C`), the city ring and a few cross avenues are always plain streets. `EDGE_LIST` is the
+  walkable network the sim builds its routes from; `cellAt(x,z)` classifies any point. City walls are 24 tall just
+  outside the outer street (`WALL` holds the walkway lines sentries patrol). Everything outside `CITY_R` is
+  countryside; `occupied(x,z)` says where hills/forest can't go and `groundH(x,z)` is the hill height (0 in the city).
+- **Buildings:** `home1`, `home2`, `shop`, `inn`, `manor` (walled courtyard compound) fill block rows; `teahouse`
+  (three storeys, 20 wide) stands in garden strips. All share the house door convention (door at local x=0, front
+  edge ≈ +12, teahouse +10). The palace is `palace_hall` + `palace_wall`s + the `fort_gate` gatehouse, all re-coloured
+  to imperial gold.
 - **Crowds:** each walker looks ~7 units ahead (`steer` in `sim.js`): it eases behind someone walking its way (and drifts
   past if they're slower), veers right around oncoming or standing people, and briefly waits only when right on
   someone's heels. Collision circles (2.4 for adults) are the hard backstop. Health check numbers worth keeping:

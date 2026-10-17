@@ -218,3 +218,82 @@ export function pavilion() {
   hipRoof(g, 11, 28, 11, 28, 20, { pearl: true });
   return g;
 }
+
+/** Three-storey teahouse: narrow (fits a 22-wide garden strip), balconies, lanterns, outdoor tables. Door at x=24, front edge z=33. */
+export function teahouse() {
+  const S = 48, g = new G(S), rnd = rng(91), cx = 24;
+  g.box(13, 0, 14, 34, 0, 34, (x, y, z) => (x === 13 || x === 34 || z === 14 || z === 34 ? M.stoneD : (x + z) % 5 ? M.stoneL : M.stone));
+  walls(g, 17, 30, 17, 30, 1, 9, rnd); doorAt(g, cx, 30, 1, 7, true);
+  windowAt(g, "left", 17, 30, 17, 30, 21, 3, 4, 4, "slats"); windowAt(g, "right", 17, 30, 17, 30, 21, 3, 4, 4, "slats"); windowAt(g, "back", 17, 30, 17, 30, 21, 3, 4, 4);
+  for (const px of [17, 30]) { g.set(px, 1, 32, M.stone); g.box(px, 2, 32, px, 9, 32, (x, y) => (y === 9 ? C.d : C.base)); }
+  beamRow(g, 17, 30, 9, 32); beamRow(g, 17, 30, 9, 31); lantern(g, 20, 8, 32); lantern(g, 27, 8, 32);
+  hipRoof(g, 14, 33, 14, 33, 10, { maxLayers: 2, zs: [1, 1], xs: [1, 1], ridge: false });
+  walls(g, 18, 29, 18, 29, 12, 18, rnd, false);
+  for (const a of [19, 25]) windowAt(g, "front", 18, 29, 18, 29, a, 14, 4, 3, "lattice"); windowAt(g, "left", 18, 29, 18, 29, 22, 14, 4, 3); windowAt(g, "right", 18, 29, 18, 29, 22, 14, 4, 3);
+  for (let x = 16; x <= 31; x++) { g.set(x, 13, 31, C.base); if (x % 2 === 0) g.set(x, 12, 31, C.d); }
+  lantern(g, 16, 18, 31); lantern(g, 31, 18, 31);
+  hipRoof(g, 15, 32, 15, 32, 19, { maxLayers: 2, zs: [1, 1], xs: [1, 1], ridge: false });
+  walls(g, 19, 28, 19, 28, 21, 26, rnd, false);
+  windowAt(g, "front", 19, 28, 19, 28, 22, 22, 4, 3, "slats"); windowAt(g, "back", 19, 28, 19, 28, 22, 22, 4, 3, "slats");
+  for (let x = 17; x <= 30; x++) { g.set(x, 22, 30, C.base); if (x % 2 === 0) g.set(x, 21, 30, C.d); }
+  hipRoof(g, 15, 32, 15, 32, 27, { pearl: true });
+  g.box(34, 1, 32, 34, 25, 32, M.woodD); g.set(34, 26, 32, M.gold);
+  for (let y = 14; y <= 24; y++) for (let x = 35; x <= 36; x++) g.set(x, y, 32, y === 14 || y === 24 ? CLOTH : y % 3 === 0 && x === 35 ? M.ink : M.cream);
+  for (const tx of [14, 31]) { g.box(tx, 1, 33, tx + 1, 2, 33, M.woodL); g.set(tx, 3, 33, M.jarBrown); g.set(tx - 1, 1, 33, M.woodD); g.set(tx + 2, 1, 33, M.woodD); }
+  return g;
+}
+
+/** Walled courtyard manor (siheyuan): perimeter wall with a roofed gateway, main hall at the back, two side wings,
+ *  a courtyard tree. Same footprint/door as the houses: gateway at x=20, front edge z=31. */
+export function manor() {
+  const S = 40, g = new G(S), rnd = rng(57), cx = 20;
+  g.box(3, 0, 7, 36, 0, 32, (x, y, z) => (x === 3 || x === 36 || z === 7 || z === 32 ? M.stoneD : x > 6 && x < 33 && z > 21 && z < 30 ? ((x + z) % 2 ? M.stoneL : M.stone) : M.stoneL));
+  g.shell(4, 1, 8, 35, 7, 31, (x, y, z) => (y === 1 ? M.skirt : y === 7 ? Wl.shadow : rnd() < 0.1 ? Wl.d : Wl.base));
+  for (let x = 4; x <= 35; x++) for (let z = 8; z <= 31; z++) if (x === 4 || x === 35 || z === 8 || z === 31) { g.set(x, 8, z, (x + z) % 3 ? R.base : R.dark); if ((x === 4 || x === 35) !== (z === 8 || z === 31) || x === 4 || x === 35) g.set(x, 9, z, R.ridge); }
+  for (let x = 4; x <= 35; x++) { g.set(x, 9, 8, R.ridge); g.set(x, 9, 31, R.ridge); }
+  for (let x = cx - 2; x <= cx + 1; x++) for (let y = 1; y <= 7; y++) { g.set(x, y, 31, null); g.set(x, y, 30, x === cx - 1 ? M.doorD : M.door); }
+  for (const px of [cx - 4, cx + 3]) g.box(px, 1, 32, px, 9, 32, (x, y) => (y === 9 ? C.d : C.base));
+  beamRow(g, cx - 4, cx + 3, 9, 32); lantern(g, cx - 4, 8, 33); lantern(g, cx + 3, 8, 33);
+  hipRoof(g, cx - 7, cx + 6, 28, 34, 10, { zs: [1, 1, 1], xs: [1, 1, 1] });
+  walls(g, 9, 30, 10, 19, 1, 9, rnd); doorAt(g, cx, 19, 1, 7, false);
+  windowAt(g, "front", 9, 30, 10, 19, 11, 3, 4, 4, "lattice"); windowAt(g, "front", 9, 30, 10, 19, 25, 3, 4, 4, "lattice");
+  for (const px of [9, 14, 25, 30]) g.box(px, 1, 21, px, 9, 21, (x, y) => (y === 9 ? C.d : C.base)); beamRow(g, 9, 30, 9, 21); beamRow(g, 9, 30, 9, 20);
+  hipRoof(g, 6, 33, 7, 23, 10);
+  for (const [a, b] of [[6, 11], [28, 33]]) { walls(g, a, b, 21, 28, 1, 6, rnd); windowAt(g, a < 20 ? "right" : "left", a, b, 21, 28, 23, 2, 3, 3, "slats"); hipRoof(g, a - 2, b + 2, 19, 30, 7, { zs: [1, 1, 1], xs: [1, 1, 1] }); }
+  g.box(19, 1, 25, 20, 4, 26, M.trunk); g.ball(19.5, 7, 25.5, 4, 3, 3.5, (x, y) => (y > 8 ? M.pinkL : y > 6 ? M.pink : M.pinkD));
+  for (const [x, z] of [[14, 27], [25, 27]]) { g.box(x, 1, z, x + 1, 1, z + 1, M.jarBlue); g.set(x, 2, z, M.leaf); g.set(x + 1, 2, z + 1, M.leafL); }
+  return g;
+}
+
+/** The palace's great hall: a double-roofed hall on a three-tier marble terrace with a grand staircase. Front faces +Z. */
+export function palaceHall() {
+  const S = 128, g = new G(S), rnd = rng(66), c = 64, MAR = "#ece8e0", MARD = "#cfcac0", MARL = "#f8f6f0";
+  const tier = (x0, x1, z0, z1, y0) => { g.box(x0, y0, z0, x1, y0 + 1, z1, (x, y, z) => (x === x0 || x === x1 || z === z0 || z === z1 ? (y === y0 + 1 ? MARL : MARD) : y === y0 + 1 ? ((x + z) % 7 ? MAR : MARD) : undefined));
+    for (let x = x0; x <= x1; x += 3) { g.set(x, y0 + 2, z0, MARL); g.set(x, y0 + 2, z1, MARL); } for (let z = z0; z <= z1; z += 3) { g.set(x0, y0 + 2, z, MARL); g.set(x1, y0 + 2, z, MARL); } };
+  tier(10, 117, 26, 101, 0); tier(14, 113, 30, 97, 2); tier(18, 109, 34, 93, 4);
+  for (let s = 0; s <= 5; s++) { const za = 104 - 2 * s; g.box(52, s, za, 75, s, za + 1, (x) => (x >= 61 && x <= 66 ? "#d8c890" : MARL)); }
+  for (let x = 52; x <= 75; x++) for (let z = 94; z <= 105; z++) for (let y = 3; y <= 6; y++) if (g.get(x, y, z) === MARL && (x === 52 || x === 75)) g.set(x, y + 1, z, MARD);
+  for (const lx of [46, 79]) { g.box(lx, 0, 104, lx + 2, 2, 106, MARD); g.box(lx, 3, 104, lx + 2, 6, 106, "#9a9488"); g.box(lx, 7, 105, lx + 2, 8, 106, "#9a9488"); g.set(lx + 1, 7, 107, M.ink); }
+  walls(g, 24, 103, 42, 85, 6, 27, rnd, false);
+  for (const dx of [44, 64, 84]) doorAt(g, dx, 85, 6, 14, true);
+  for (const a of [28, 51, 71, 94]) windowAt(g, "front", 24, 103, 42, 85, a, 10, 6, 9, "lattice");
+  for (const a of [30, 50, 70, 90]) windowAt(g, "back", 24, 103, 42, 85, a, 10, 6, 9, "lattice");
+  for (const a of [50, 70]) { windowAt(g, "left", 24, 103, 42, 85, a, 10, 6, 9, "slats"); windowAt(g, "right", 24, 103, 42, 85, a, 10, 6, 9, "slats"); }
+  for (let px = 24; px <= 103; px += 8) { g.set(px, 6, 89, MARD); g.box(px, 7, 89, px, 27, 89, (x, y) => (y === 27 ? C.d : C.base)); g.box(px, 6, 38, px, 27, 38, (x, y) => (y === 27 ? C.d : C.base)); }
+  for (const z of [86, 87, 88, 89]) beamRow(g, 24, 103, 27, z);
+  hipRoof(g, 18, 109, 36, 93, 28, { maxLayers: 4, zs: [1, 1, 1, 1], xs: [1, 1, 1, 1], ridge: false });
+  walls(g, 32, 95, 48, 79, 32, 42, rnd, false);
+  for (const a of [36, 48, 60, 72, 84]) windowAt(g, "front", 32, 95, 48, 79, a, 35, 5, 5, "lattice");
+  for (let px = 32; px <= 95; px += 9) g.box(px, 32, 81, px, 42, 81, (x, y) => (y === 42 ? C.d : C.base)); beamRow(g, 32, 95, 42, 81); beamRow(g, 32, 95, 42, 80);
+  for (let x = 31; x <= 96; x++) { g.set(x, 33, 82, C.base); if (x % 2 === 0) g.set(x, 32, 82, C.d); }
+  hipRoof(g, 24, 103, 40, 87, 43, { pearl: true });
+  return g;
+}
+
+/** Red palace wall, 22 long, capped with tiles (canonical ROOF → imperial gold in world.js). Footprint z 13..18. */
+export function palaceWall() {
+  const S = 32, g = new G(S);
+  g.box(5, 0, 13, 26, 13, 18, (x, y, z) => (x !== 5 && x !== 26 && z !== 13 && z !== 18 && y > 0 && y < 13 ? undefined : y <= 1 ? "#8a2a24" : y === 13 ? "#6a2020" : "#b8302a"));
+  for (let x = 5; x <= 26; x++) { for (let z = 12; z <= 19; z++) g.set(x, 14, z, z === 12 || z === 19 ? (x % 3 ? R.cap : R.dark) : R.base); for (let z = 14; z <= 17; z++) g.set(x, 15, z, x % 3 ? R.base : R.dark); g.set(x, 16, 15, R.ridge); g.set(x, 16, 16, R.ridge); }
+  return g;
+}

@@ -22,7 +22,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#a6d8f2");
-scene.fog = new THREE.Fog("#bfe3f5", 1100, 3200);
+scene.fog = new THREE.Fog("#bfe3f5", 1400, 3800);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
 Object.assign(controls, { enableDamping: true, dampingFactor: 0.12, screenSpacePanning: false, maxPolarAngle: 1.42, minDistance: 12, maxDistance: 1600, zoomSpeed: 1.2 });
@@ -35,14 +35,18 @@ addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; cam
 
 const VIEWS = {
   town: () => [[W.CENTER.x + 170, 190, W.CENTER.z + 260], [W.CENTER.x, 0, W.CENTER.z - 10]],
-  overview: () => [[W.WX / 2, 900, W.WZ + 420], [W.WX / 2, 0, W.WZ / 2 - 30]],
-  city: () => [[W.CITY.x0 + W.CW / 2, 520, W.CITY.z1 + 420], [W.CITY.x0 + W.CW / 2, 0, (W.CITY.z0 + W.CITY.z1) / 2]],
+  overview: () => [[W.WX / 2, 1150, W.WZ + 560], [W.WX / 2, 0, W.WZ / 2 - 30]],
+  city: () => [[W.CITY.x0 + W.CW / 2, 760, W.CITY.z1 + 600], [W.CITY.x0 + W.CW / 2, 0, (W.CITY.z0 + W.CITY.z1) / 2]],
   walls: () => [[W.CITY.x1 + 70, 70, W.CITY.z1 + 80], [W.CITY.x1 - 60, 22, W.CITY.z1 - 10]],
   country: () => [[W.HAMLETS[2].x + 160, 120, W.HAMLETS[2].z + 210], [W.HAMLETS[2].x + 40, 0, W.HAMLETS[2].z - 20]],
   plaza: () => [[W.CENTER.x + 40, 70, W.CENTER.z + 110], [W.CENTER.x, 0, W.CENTER.z]],
   street: () => [[W.SX[0] + 6, 18, W.SZ[3] + 4], [W.SX[2] + 20, 4, W.SZ[3] - 2]],
   gate: () => [[W.GATE_X + 35, 42, W.WALL_S + 105], [W.GATE_X, 10, W.WALL_S + 4]],
-  fort: () => [[W.GATE_X + 60, 110, W.FORT.z + 190], [W.GATE_X, 0, W.FORT.z + 40]],
+  palace: () => [[W.GATE_X + 190, 210, W.PALACE.z + W.PALACE.d + 210], [W.GATE_X, 10, W.PALACE.z + W.PALACE.d / 2]],
+  fort: () => VIEWS.palace(),
+  district: () => [[W.SX[1] - 40, 210, W.SZ[7] + 170], [W.SX[2] + 30, 0, W.SZ[5] + 20]],
+  yard: () => [[W.GATE_X + 70, 60, W.YARD.z + W.YARD.d + 70], [W.GATE_X, 8, W.YARD.z + 10]],
+  alley: () => { const e = W.EDGE_LIST.find((q) => q.type === "alley" && q.a[0] > 0) ?? W.EDGE_LIST[0], x = (W.SX[e.a[0]] + W.SX[e.b[0]]) / 2, z = W.alleyZ(e.a[1], e.a[0], x); return [[x - 26, 75, z + 34], [x + 6, 0, z]]; },
   river: () => [[L.WHEEL.x - 40, 48, W.RIVER.zc(L.WHEEL.x) + 70], [L.WHEEL.x + 20, 4, W.RIVER.zc(L.WHEEL.x) - 4]],
   paddies: () => [[W.GATE_X - 160, 70, W.WALL_S + 150], [W.GATE_X - 160, 0, W.WALL_S + 55]],
   pagoda: () => { const b = W.block(...W.PAGODA_BLOCK); return [[b.x + 120, 80, b.z + 170], [b.x + 42, 10, b.z + 40]]; },
@@ -96,7 +100,7 @@ function tufts() { // little 3D grass tufts and rice seedlings to break up the f
   const pts = [];
   for (const p of W.PADDIES) for (let z = p.z + 3; z < p.z + p.d; z += 12) for (let x = p.x + 2; x < p.x + p.w - 2; x += 3) pts.push([x + W.rnd(-0.6, 0.6), z + W.rnd(0, 4), W.pick(["#58c048", "#6cd058", "#48a838"])]);
   for (let i = 0; i < 16000; i++) { const x = W.rnd(0, W.WX), z = W.rnd(W.RIVER.zc(0) + 20, W.WZ); if (W.occupied(x, z, -6) && !W.inRect(x, z, W.CITY_R)) continue;
-    if (W.isStreet(x, z) || W.inRect(x, z, W.PLAZA) || W.inRect(x, z, W.FORT) || (W.inRect(x, z, W.CITY_R) && !W.isStreet(x, z) && chance3())) continue; pts.push([x, z, W.pick(["#4ea23a", "#62b446", "#3a8430", "#90d866"])]); }
+    if (W.isStreet(x, z) || W.inRect(x, z, W.PLAZA) || W.inRect(x, z, W.PALACE) || (W.inRect(x, z, W.CITY_R) && !W.isStreet(x, z) && chance3())) continue; pts.push([x, z, W.pick(["#4ea23a", "#62b446", "#3a8430", "#90d866"])]); }
   const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length); const col = new THREE.Color();
   pts.forEach(([x, z, c], i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(c)); });
   im.receiveShadow = true; scene.add(im);
@@ -174,7 +178,7 @@ function pickAt(sx, sy) {
 }
 city.pickAt = pickAt;
 city.screenOf = (e) => { const v = new THREE.Vector3(e.x, (e.y || 0) + 4, e.z).project(camera); return [Math.round((v.x + 1) / 2 * innerWidth), Math.round((1 - v.y) / 2 * innerHeight)]; };
-city.camera = camera; city.controls = controls; city.scene = scene;
+city.world = W; city.layout = L; city.camera = camera; city.controls = controls; city.scene = scene;
 const keys = new Set(); addEventListener("keydown", (e) => { keys.add(e.key.toLowerCase()); if (e.key === "Escape") { followed = null; updateInfo(); } }); addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 function keyPan(dt) {
   const f = (keys.has("w") ? 1 : 0) - (keys.has("s") ? 1 : 0), r = (keys.has("d") ? 1 : 0) - (keys.has("a") ? 1 : 0); if (!f && !r) return;
