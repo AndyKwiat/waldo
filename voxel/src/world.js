@@ -293,8 +293,31 @@ export function groundTexture() {
   F(CITY.x0, CITY.z0, CW, CD, "#b49c70");
   for (let z = CITY.z0; z < CITY.z1; z += 4) for (let x = CITY.x0 + ((z / 4) % 2 ? 3 : 0); x < CITY.x1; x += 6) {
     const k = cellAt(x + 2.5, z + 1.5);
-    if (k === "street") F(x, z, 5, 3, pick(["#e0cfa4", "#e0cfa4", "#d8c69a", "#e6d7b0"]));
-    else if (k === "alley" || k === "garden") F(x - 0.5, z - 0.5, 6, 4, pick(["#6cc04c", "#62b446", "#68bc4a", "#74c852"]));
+    if (k === "alley" || k === "garden") F(x - 0.5, z - 0.5, 6, 4, pick(["#6cc04c", "#62b446", "#68bc4a", "#74c852"]));
+  }
+  // Street paving follows the street: running-bond slabs laid lengthwise along each segment (5×3 with 1-unit joints,
+  // rows offset by half a slab), edged with a kerb of narrow stones; intersections get a square-set grid of 4×4 flags
+  // inside a kerb border, so every junction reads as its own little square.
+  const SLAB = ["#e0cfa4", "#e0cfa4", "#d8c69a", "#e6d7b0", "#dccb9e"];
+  const bandH = (z) => SZ.some((sz) => Math.abs(z - sz) < STREET / 2), bandV = (x) => SX.some((sx) => Math.abs(x - sx) < STREET / 2);
+  const streetAt = (x, z) => cellAt(x, z) === "street";
+  for (let r = 0; r < SZ.length; r++) { // along x (east–west segments): rows of slabs 5 long in x
+    const z0 = SZ[r] - STREET / 2;
+    for (let row = 0; row * 4 < STREET - 2; row++) { const z = z0 + 1 + row * 4;
+      for (let x = CITY.x0 + (row % 2 ? 3 : 0); x < CITY.x1; x += 6) { const cx = x + 2.5, cz = z + 1.5; if (!streetAt(cx, cz) || bandV(cx)) continue; F(x, z, 5, 3, pick(SLAB)); } }
+    for (const kz of [z0, z0 + STREET - 1]) for (let x = CITY.x0; x < CITY.x1; x += 2) if (streetAt(x + 1, kz + 0.5) && !bandV(x + 1)) F(x, kz, 1.6, 1, pick(["#c8b48a", "#bea880"]));
+  }
+  for (let c = 0; c < SX.length; c++) { // along z (north–south segments): columns of slabs 5 long in z
+    const x0 = SX[c] - STREET / 2;
+    for (let col = 0; col * 4 < STREET - 2; col++) { const x = x0 + 1 + col * 4;
+      for (let z = CITY.z0 + (col % 2 ? 3 : 0); z < CITY.z1; z += 6) { const cx = x + 1.5, cz = z + 2.5; if (!streetAt(cx, cz) || bandH(cz)) continue; F(x, z, 3, 5, pick(SLAB)); } }
+    for (const kx of [x0, x0 + STREET - 1]) for (let z = CITY.z0; z < CITY.z1; z += 2) if (streetAt(kx + 0.5, z + 1) && !bandH(z + 1)) F(kx, z, 1, 1.6, pick(["#c8b48a", "#bea880"]));
+  }
+  for (const sx of SX) for (const sz of SZ) { // intersections: kerb-bordered square of square flags
+    if (!streetAt(sx, sz)) continue;
+    const x0 = sx - STREET / 2, z0 = sz - STREET / 2;
+    F(x0, z0, STREET, STREET, "#bea880");
+    for (let z = z0 + 1; z < z0 + STREET - 1; z += 5) for (let x = x0 + 1; x < x0 + STREET - 1; x += 5) F(x, z, Math.min(4, x0 + STREET - 1 - x), Math.min(4, z0 + STREET - 1 - z), pick(SLAB));
   }
   for (let i = 0; i < 9000; i++) { const x = rnd(CITY.x0, CITY.x1), z = rnd(CITY.z0, CITY.z1), k = cellAt(x, z); if (k === "alley" || k === "garden") F(x, z, 1, 1, pick(["#ffffff", "#ffe050", "#ff80a0", "#4ea23a", "#90d866"])); }
   for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "alley") {
