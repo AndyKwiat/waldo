@@ -73,6 +73,25 @@ export function personVoxels(p) {
   return v;
 }
 
+/**
+ * Rigid limbs for walk animation (see meshVoxels opts.parts): [k, pivotY, pivotZ] per cell, or null for the body.
+ * k = ±1 legs, ±2 arms (swing 0.8×); the sign sets the phase, so the left leg swings with the right arm.
+ * Pivots are in mesh coords (pivot "base": z − 8 in the 16-grid); legs hinge at the hip (y 3), arms at the shoulder (y 6).
+ */
+export function personParts(p) {
+  return (x, y, z) => {
+    if (!p.dress && y <= 2 && (x === 7 || x === 9) && (z === 7 || z === 8)) return [x === 7 ? 1 : -1, 3, 0];
+    if (y >= 3 && y <= 5 && (z === 7 || z === 8)) { if (x === 6) return [-2, 6, 0]; if (x === 10 && !p.item) return [2, 6, 0]; }
+    return null;
+  };
+}
+/** Four legs for dogs and cats (diagonal trot: front-left with back-right); hip at y 2. */
+export function animalParts(kind) {
+  const legs = kind === "dog" ? [[7, 5, 1], [9, 5, -1], [7, 10, -1], [9, 10, 1]] : kind === "cat" ? [[8, 6, 1], [9, 6, -1], [8, 10, -1], [9, 10, 1]] : null;
+  if (!legs) return null;
+  return (x, y, z) => { if (y > 1) return null; for (const [lx, lz, k] of legs) if (x === lx && z === lz) return [k, 2, lz + 0.5 - 8]; return null; };
+}
+
 // ---- animals (front +Z)
 /** `pose` (pigeons only): undefined = wings folded, "up" / "down" = the two flight frames. */
 export function animalVoxels(kind, c, pose) {

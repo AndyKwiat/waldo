@@ -41,6 +41,9 @@ const FACES = [
  * @param opts.remap  hex→hex color substitutions (model variants)
  * @param opts.pivot  "base" (default: grid center x/z, y=0) or "center" (grid center in all axes, for spinning parts)
  * @param opts.scale  world units per voxel (default 1)
+ * @param opts.parts  optional (x, y, z) → [k, pivotY, pivotZ] | null: rigid parts for vertex-shader limb animation
+ *                    (people/animals). Adds an `aPart` attribute (k = swing sign/kind, pivot in mesh coords); faces
+ *                    between different parts are kept, and faces of different parts never merge.
  */
 export function meshVoxels(grid, opts = {}) {
   const S = grid.size, cells = grid.cells, remap = opts.remap ?? {}, sc = opts.scale ?? 1;
@@ -58,7 +61,13 @@ export function meshVoxels(grid, opts = {}) {
   // Greedy meshing: per face direction and slice, a mask of exposed faces keyed by (final color, 4 corner AO values).
   // Neighbouring faces with the same key merge only along axes where their AO is constant (ao0=ao1 & ao3=ao2 along u,
   // ao0=ao3 & ao1=ao2 along v), so the interpolated vertex colors — and the quad split — are exactly as per voxel.
-  const mask = new Int32Array(S * S);
+  const mask = new Int32Array(S * S), apart = [];
+  // per-cell part id (0 = static body); parts are identified by their [k, py, pz] tuple
+  let pid = null; const ptab = [[0, 0, 0]];
+  if (opts.parts) { pid = new Uint8Array(S * S * S); const ids = new Map();
+    for (let y = 0; y < S; y++) for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) { const i = (y * S + z) * S + x; if (!cells[i]) continue; const t = opts.parts(x, y, z); if (!t || !t[0]) continue;
+      const k = t.join(","); let id = ids.get(k); if (id === undefined) { id = ptab.length; ptab.push(t); ids.set(k, id); } pid[i] = id; } }
+  const pidAt = (x, y, z) => (pid ? pid[(y * S + z) * S + x] : 0);
   for (const f of FACES) {
     const shade = f.d === 1 && f.s < 0 ? 0.8 : 1, nx = f.d === 0 ? f.s : 0, ny = f.d === 1 ? f.s : 0, nz = f.d === 2 ? f.s : 0;
     for (let w = 0; w < S; w++) {
@@ -67,7 +76,8 @@ export function meshVoxels(grid, opts = {}) {
         q[f.d] = w; q[f.u] = uu; q[f.v] = vv;
         const c = cells[(q[1] * S + q[2]) * S + q[0]]; if (!c) continue;
         p[0] = q[0]; p[1] = q[1]; p[2] = q[2]; p[f.d] += f.s;
-        if (at(p[0], p[1], p[2])) continue;
+        const mine = pidAt(q[0], q[1], q[2]);
+        if (at(p[0], p[1], p[2]) && (!pid || pidAt(p[0], p[1], p[2]) === mine)) continue;   // a different part next door: keep the face
         let key = 0;
         for (let i = 0; i < 4; i++) {
           // ambient occlusion from the three cells touching this corner in front of the face
@@ -77,7 +87,7 @@ export function meshVoxels(grid, opts = {}) {
           const s1 = at(a[0], a[1], a[2]) ? 1 : 0, s2 = at(b[0], b[1], b[2]) ? 1 : 0, s3 = at(e[0], e[1], e[2]) ? 1 : 0;
           key |= (s1 && s2 ? 0 : 3 - s1 - s2 - s3) << (2 * i);
         }
-        mask[vv * S + uu] = ((cid[c - 1] + 1) << 8) | key;
+        mask[vv * S + uu] = ((mine * 512 + cid[c - 1] + 1) << 8) | key;
       }
       for (let vv = 0; vv < S; vv++) for (let uu = 0; uu < S; uu++) {
         const key = mask[vv * S + uu]; if (!key) continue;
@@ -87,11 +97,11 @@ export function meshVoxels(grid, opts = {}) {
         if (canU) while (uu + du < S && mask[vv * S + uu + du] === key) du++;
         if (canV) for (; vv + dv < S; dv++) { let k = 0; while (k < du && mask[(vv + dv) * S + uu + k] === key) k++; if (k < du) break; }
         for (let j = 0; j < dv; j++) mask.fill(0, (vv + j) * S + uu, (vv + j) * S + uu + du);
-        const c = col[(key >> 8) - 1], base = pos.length / 3;
+        const c = col[((key >> 8) & 511) - 1], base = pos.length / 3, part = ptab[key >> 17];
         for (let i = 0; i < 4; i++) {
           q[f.d] = w + (f.s > 0 ? 1 : 0); q[f.u] = uu + CORNERS[i][0] * du; q[f.v] = vv + CORNERS[i][1] * dv;
           pos.push((q[0] - ox) * sc, (q[1] - oy) * sc, (q[2] - oz) * sc);
-          nor.push(nx, ny, nz);
+          nor.push(nx, ny, nz); if (pid) apart.push(part[0], part[1] * sc, (part[2]) * sc);
           const k = AO[ao[i]] * shade;
           clr.push(c.r * k, c.g * k, c.b * k);
         }
@@ -107,6 +117,7 @@ export function meshVoxels(grid, opts = {}) {
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(clr, 3));
+  if (pid) g.setAttribute("aPart", new THREE.Float32BufferAttribute(apart, 3));
   g.setIndex(ind);
   g.computeBoundingBox(); g.computeBoundingSphere();
   return g;

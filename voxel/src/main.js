@@ -9,7 +9,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import * as W from "./world.js";
 import { loadModel, meshVoxels, gridFromVoxels } from "./voxels.js";
-import { personVoxels, animalVoxels, DOG_COLORS, CAT_LOOKS, PIGEON_COLORS, DUCK_LOOKS } from "./people.js";
+import { personVoxels, personParts, animalParts, animalVoxels, DOG_COLORS, CAT_LOOKS, PIGEON_COLORS, DUCK_LOOKS } from "./people.js";
 import { createSim } from "./sim.js";
 import { WHEELS, wheelModel } from "../models/recipes/props.js";
 import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
@@ -28,8 +28,8 @@ const distDark = { value: qs.has("nodark") ? 0 : 1 }, distFocus = { value: 300 }
 const nightU = { uNight: { value: 0 }, uLightMap: { value: null }, uLightRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uLightGain: { value: 1.15 } };
 function addDistanceDarkening(root) {
   root.traverse((o) => { for (const m of [o.material].flat()) { if (!m || !m.fog || m.userData.distDark) continue; m.userData.distDark = true;
-    const lit = m.isMeshLambertMaterial;
-    m.onBeforeCompile = (sh) => {
+    const lit = m.isMeshLambertMaterial, prev = m.onBeforeCompile, prevKey = m.customProgramCacheKey.bind(m);
+    m.onBeforeCompile = (sh, r) => { prev.call(m, sh, r);
       sh.uniforms.uDistDark = distDark; sh.uniforms.uDistFocus = distFocus; Object.assign(sh.uniforms, nightU);
       let night = "";
       if (lit) {
@@ -41,7 +41,7 @@ function addDistanceDarkening(root) {
       sh.fragmentShader = "uniform float uDistDark;\nuniform float uDistFocus;\nuniform float uNight;\nuniform sampler2D uLightMap;\nuniform vec4 uLightRect;\nuniform float uLightGain;\n" + (lit ? "varying vec3 vNightWP;\n" : "") +
         sh.fragmentShader.replace("#include <fog_fragment>", "#ifdef USE_FOG\n\tgl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.52, 0.57, 0.74 ), smoothstep( uDistFocus * 0.9, uDistFocus * 2.0, vFogDepth ) * uDistDark );\n#endif\n" + night + "#include <fog_fragment>");
     };
-    m.customProgramCacheKey = () => "distDark+night" + (lit ? "L" : ""); m.needsUpdate = true; } });
+    m.customProgramCacheKey = () => prevKey() + "|distDark+night" + (lit ? "L" : ""); m.needsUpdate = true; } });
 }
 const city = (window.city = { ready: false });
 const setStatus = (t) => { const el = document.getElementById("loading"); if (el) el.textContent = t; };
@@ -134,6 +134,15 @@ city.cam = (pos, target) => placeCam(pos, target);
 
 // ---------- static world
 const vmat = new THREE.MeshLambertMaterial({ vertexColors: true });
+// Walk animation for people / dogs / cats: limbs tagged per vertex (aPart = [k, pivotY, pivotZ], see meshVoxels opts.parts)
+// swing about the x axis at their hip/shoulder by sin(phase) × amplitude, from a per-instance aWalk = [phase, amp].
+const walkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+walkMat.onBeforeCompile = (sh) => {
+  sh.vertexShader = "attribute vec3 aPart;\nattribute vec2 aWalk;\n" + sh.vertexShader
+    .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\n\tfloat wAng = aPart.x == 0.0 ? 0.0 : sign( aPart.x ) * ( abs( aPart.x ) > 1.5 ? 0.7 : 1.0 ) * sin( aWalk.x ) * aWalk.y;\n\tfloat wc = cos( wAng ), ws = sin( wAng );\n\tobjectNormal = vec3( objectNormal.x, objectNormal.y * wc - objectNormal.z * ws, objectNormal.y * ws + objectNormal.z * wc );")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\n\t{ vec2 wd = vec2( transformed.y - aPart.y, transformed.z - aPart.z ); transformed.y = aPart.y + wd.x * wc - wd.y * ws; transformed.z = aPart.z + wd.x * ws + wd.y * wc; }");
+};
+walkMat.customProgramCacheKey = () => "walk";
 const L = W.layout();
 const tex = W.groundTexture();
 // Flat ground layers are only centimetres apart, far below depth-buffer precision at city distances, so each
@@ -231,8 +240,11 @@ async function buildActors() {
   const groups = new Map(); for (const it of all) { const k = lookKey(it.a.look); (groups.get(k) ?? groups.set(k, []).get(k)).push(it); }
   await Promise.all([...groups].map(async ([k, list]) => {
     const look = list[0].a.look;
-    const geo = look.model ? await modelGeometry(look.model, null, "m:" + look.model) : meshVoxels(look.animal ? animalGrid(look) : gridFromVoxels(personVoxels(look), 16), { pivot: "base" });
-    const im = new THREE.InstancedMesh(geo, vmat, list.length); im.castShadow = true; im.receiveShadow = !LOW; im.frustumCulled = false;
+    const parts = look.model ? null : look.animal ? animalParts(look.animal) : personParts(look);
+    const geo = look.model ? await modelGeometry(look.model, null, "m:" + look.model) : meshVoxels(look.animal ? animalGrid(look) : gridFromVoxels(personVoxels(look), 16), { pivot: "base", parts: parts ?? undefined });
+    let walk = null;
+    if (parts) { walk = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 2), 2); walk.setUsage(THREE.DynamicDrawUsage); geo.setAttribute("aWalk", walk); }
+    const im = new THREE.InstancedMesh(geo, walk ? walkMat : vmat, list.length); im.userData.walk = walk; im.castShadow = true; im.receiveShadow = !LOW; im.frustumCulled = false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.userData.actors = list.map((x) => x.a);
     list.forEach((x, i) => { x.a._mesh = im; x.a._slot = i; x.a.hp = Math.random() * 6; im.setColorAt(i, WHITE); });
     scene.add(im); actorMeshes.set(k, im); if (list[0].pick) pickables.push(im);
@@ -354,6 +366,12 @@ function updateActors(dt) {
     if (e.kind === "vehicle") e.roll = (e.roll ?? 0) + moved / (e.scale ?? 1);
     const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;   // slower walkers bob less
     place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
+    const wk = e._mesh.userData.walk;
+    if (wk) { // legs pass on landing, spread at the top of each hop; eases in/out as they start and stop walking
+      const target = e.mv ? (e.kind === "person" ? 0.4 : 0.55) * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;
+      e.walkAmp = (e.walkAmp ?? 0) + (target - (e.walkAmp ?? 0)) * Math.min(1, dt * 8);
+      wk.array[e._slot * 2] = e.hp; wk.array[e._slot * 2 + 1] = e.walkAmp;
+    }
     e._mesh.setColorAt(e._slot, aoTint(e, e.y || 0));
   }
   for (const g of sim.pigeons) { // folded on the ground; flying birds alternate the wings-up / wings-down meshes
@@ -365,7 +383,7 @@ function updateActors(dt) {
   }
   for (const b of sim.boats) place(b, b.x, -0.6 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
   for (const d of sim.ducks) place(d, d.x, -0.2 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
-  for (const im of actorMeshes.values()) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+  for (const im of actorMeshes.values()) { im.instanceMatrix.needsUpdate = true; if (im.userData.walk) im.userData.walk.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   updateVehicleWheels();
   if (night !== nightTarget) { night += (nightTarget - night) * Math.min(1, dt * 1.6); if (Math.abs(nightTarget - night) < 0.004) night = nightTarget; applyNight(night); }
   if (sky) sky.group.position.copy(camera.position);
