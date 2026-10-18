@@ -17,7 +17,7 @@ bun run statue              # rebuild the giant statue (a Voxer recipe file, bui
 (orbiting keeps following; right-drag, WASD or Esc stops).
 **Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
 **URL params:** `?view=town|overview|city|district|alley|plaza|statue|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
-fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key) · `&nosky` (no baked sky occlusion).
+fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key) · `&nosky` (no baked sky occlusion) · `&nodark` (no distance darkening).
 
 ## Layout
 
@@ -45,6 +45,8 @@ Large-scale **sky occlusion** is baked at load (`src/skyao.js`, ~0.3 s): a heigh
 column tops, then horizon-based "how much sky is visible" per 2-unit cell over the city. It multiplies a cool
 shadow tint into the ground texture, grass tufts and bushes, and tints people/animals by where they stand (less when
 up on walls or roofs), so alleys, courtyards and the foot of the walls read darker. `?nosky` disables it.
+**Distance darkening:** three's fog chunk is patched so fogged materials dim ~25% (slightly cool) between 180 and
+1100 units from the camera, before the sky-coloured haze (1400–3800); the sky itself stays bright. `?nodark` disables it.
 
 ## Conventions
 - **World:** 1 unit = 1 voxel. x east, z south, y up. An 8×8 grid of blocks with irregular column widths / row

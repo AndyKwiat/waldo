@@ -16,6 +16,12 @@ import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
 const qs = new URLSearchParams(location.search);
 if (qs.get("seed")) W.setSeed(+qs.get("seed"));
 const LOW = qs.has("low");           // cheaper rendering for headless screenshots
+
+// Distance darkening: before the usual sky-coloured haze, every fogged material dims slightly (and cools a touch)
+// with distance from the camera, so the foreground pops and far districts recede. Patched into three's fog chunk,
+// so it costs nothing and works with or without post-processing. `?nodark` turns it off.
+if (!qs.has("nodark")) THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace("#ifdef USE_FOG", `#ifdef USE_FOG
+	gl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.74, 0.77, 0.86 ), smoothstep( 180.0, 1100.0, vFogDepth ) );`);
 const city = (window.city = { ready: false });
 const setStatus = (t) => { const el = document.getElementById("loading"); if (el) el.textContent = t; };
 
