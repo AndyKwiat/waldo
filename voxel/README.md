@@ -17,7 +17,7 @@ bun run statue              # rebuild the giant statue (a Voxer recipe file, bui
 (orbiting keeps following; right-drag, WASD or Esc stops).
 **Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
 **URL params:** `?view=town|overview|city|district|alley|plaza|statue|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
-fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
+fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key).
 
 ## Layout
 
@@ -33,6 +33,13 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
 | `models/recipes/statue.recipe.js` | the giant marble Jupiter in the market square — a **Voxer recipe file** (`build(ctx)`, slots, anchors), not part of the `index.js` registry; `bun run statue` builds it with Voxer's `bun run recipe` into `models/statue.json` + `models/sheets/statue.png` (and merges its `manifest.json` entry) |
 | `models/*.json` | built models in Voxer's scene format; `models/sheets/*.png` Voxer's multi-view snapshots |
 | `scripts/` | `serve.ts` static server · `shot.ts` headless screenshots · `build-models.ts` + `voxer.ts` Voxer driver |
+
+## Lighting
+Warm key sun with soft shadows, a cool blue fill light from the opposite side and a dim hemisphere ambient (shadow
+sides read cool, lit sides warm), ACES tone mapping. Ambient occlusion at two scales: per-vertex voxel AO baked into
+every mesh (`voxels.js`) and screen-space **GTAO** (`EffectComposer`: RenderPass → GTAOPass → OutputPass, 4× MSAA
+target) for contact shadows between people, buildings and the ground. GTAO re-renders the scene for normals (~+60%
+triangles); the sun's shadow map is drawn once per frame. `city.ao(false)` / `?noao` / **O** turns it off.
 
 ## Conventions
 - **World:** 1 unit = 1 voxel. x east, z south, y up. An 8×8 grid of blocks with irregular column widths / row
@@ -74,7 +81,7 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow`.
   Default is `?low` (SwiftShader); `--hq` turns antialiasing/shadow resolution back up.
 - **In-page API** (`window.city`, also usable from the browser console):
   `ready`, `error`, `view(name)`, `cam([x,y,z],[tx,ty,tz])`, `advance(secs)` (runs the sim without waiting
-  for frames, then renders), `follow(entity|index)`, `pickAt(px,py)`, `screenOf(entity)`, `stats()`,
+  for frames, then renders), `ao(on?)` (screen-space AO), `follow(entity|index)`, `pickAt(px,py)`, `screenOf(entity)`, `stats()`,
   `sim` (`ents`, `pigeons`, `boats`, `ducks`, `step`, `stats`), `camera`, `controls`, `scene`.
   Example health check: advance 60 s and count `hidden` transitions (people entering buildings) and
   `e.stuck > 1` walkers.

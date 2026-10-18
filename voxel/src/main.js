@@ -2,6 +2,10 @@
 // Agent/debug API: window.city (see README "Agent tooling").
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import * as W from "./world.js";
 import { loadModel, meshVoxels, gridFromVoxels } from "./voxels.js";
 import { personVoxels, animalVoxels, DOG_COLORS, CAT_LOOKS, PIGEON_COLORS, DUCK_LOOKS } from "./people.js";
@@ -22,17 +26,39 @@ renderer.shadowMap.enabled = !qs.has("noshadow");
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#a6d8f2");
-scene.fog = new THREE.Fog("#bfe3f5", 1400, 3800);
+scene.background = new THREE.Color("#7cc6f4");   // pre-compensated for ACES tone mapping (shows as the old #a6d8f2-ish sky)
+scene.fog = new THREE.Fog("#a2d6f4", 1400, 3800);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 1, 5000);
 const controls = new OrbitControls(camera, renderer.domElement);
 Object.assign(controls, { enableDamping: true, dampingFactor: 0.12, screenSpacePanning: false, maxPolarAngle: 1.42, minDistance: 12, maxDistance: 1600, zoomSpeed: 1.2 });
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-const hemi = new THREE.HemisphereLight("#e8f4ff", "#8a7a5a", 1.05); scene.add(hemi);
-const sun = new THREE.DirectionalLight("#fff4e0", 2.6); sun.castShadow = true;
+// Lighting: warm key sun + cool sky fill from the opposite side (two-tone, cartoony) + a dimmer hemisphere ambient,
+// so shadowed sides read blue-ish instead of flat grey. Ambient occlusion comes from two places: per-vertex voxel AO
+// baked into every mesh (voxels.js) and screen-space GTAO (below) for larger contact shadows between objects.
+const hemi = new THREE.HemisphereLight("#dcecff", "#7a6a4a", 0.8); scene.add(hemi);
+const fill = new THREE.DirectionalLight("#9cc4ff", 0.55); fill.position.set(300, 260, -260); scene.add(fill);
+const sun = new THREE.DirectionalLight("#ffe8c8", 3.0); sun.castShadow = true;
 sun.shadow.mapSize.set(LOW ? 2048 : 4096, LOW ? 2048 : 4096); Object.assign(sun.shadow.camera, { left: -230, right: 230, top: 230, bottom: -230, near: 10, far: 1400 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.6;
 scene.add(sun, sun.target);
-addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
+
+// Post-processing: scene → GTAO (screen-space ambient occlusion, denoised) → output (tone mapping + sRGB).
+// `?noao` (or the O key) renders straight to the screen instead. The composer target keeps 4× MSAA.
+let AO = !qs.has("noao");
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: LOW ? 0 : 4 }));
+composer.setPixelRatio(renderer.getPixelRatio());
+composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+gtao.updateGtaoMaterial({ radius: 6, distanceExponent: 1.4, thickness: 3, scale: 1.25, samples: LOW ? 8 : 16, distanceFallOff: 1 });
+gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: LOW ? 8 : 16 });
+gtao.blendIntensity = 1.0;
+composer.addPass(gtao);
+composer.addPass(new OutputPass());
+renderer.info.autoReset = false;   // count every pass of a frame (stats)
+renderer.shadowMap.autoUpdate = false;   // the GTAO normal pass re-renders the scene: draw the shadow map once per frame, not per pass
+const draw = () => { renderer.info.reset(); renderer.shadowMap.needsUpdate = true; if (AO) composer.render(); else renderer.render(scene, camera); };
+addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "o" && !e.metaKey && !e.ctrlKey) AO = !AO; });
+addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); });
 
 const VIEWS = {
   town: () => [[W.CENTER.x + 170, 190, W.CENTER.z + 260], [W.CENTER.x, 0, W.CENTER.z - 10]],
@@ -235,19 +261,20 @@ city.follow = (e) => { followed = typeof e === "number" ? sim.ents[e] : e; updat
 
 // ---------- main loop
 const clock = new THREE.Clock(); let infoT = 0, fpsN = 0, fpsT = 0;
-function frame(dt, draw = true) {
+function frame(dt, render = true) {
   sim.step(dt); updateActors(dt); keyPan(dt);
   if (followed) { const t = new THREE.Vector3(followed.x, (followed.y || 0) + 5, followed.z), d = t.sub(controls.target).multiplyScalar(Math.min(1, dt * 4)); controls.target.add(d); camera.position.add(d); }
   controls.target.x = Math.max(-100, Math.min(W.WX + 100, controls.target.x)); controls.target.z = Math.max(-100, Math.min(W.WZ + 100, controls.target.z));
   controls.update();
   const T = controls.target; sun.target.position.set(Math.round(T.x / 4) * 4, 0, Math.round(T.z / 4) * 4); sun.position.copy(sun.target.position).add(V.set(-260, 420, 220));
   const dist = camera.position.distanceTo(T); const ext = Math.max(120, Math.min(420, dist * 0.75)); Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext }); sun.shadow.camera.updateProjectionMatrix();
-  if (draw) renderer.render(scene, camera);
+  if (render) draw();
   infoT += dt; if (infoT > 0.3) { infoT = 0; if (followed) updateInfo(); const s = sim.stats(); census.innerHTML = `Out &amp; about: ${s.outside}<br>Indoors: ${s.inside}<br>Carts &amp; chairs: ${s.vehicles}`; }
   fpsN++; fpsT += dt; if (fpsT > 1) { document.getElementById("stats").textContent = `${Math.round(fpsN / fpsT)} fps · ${sim.stats().actors} actors`; fpsN = 0; fpsT = 0; }
 }
-city.advance = (secs, fps = 30) => { for (let i = 0; i < secs * fps; i++) frame(1 / fps, false); renderer.render(scene, camera); };
-city.render = () => renderer.render(scene, camera);
+city.advance = (secs, fps = 30) => { for (let i = 0; i < secs * fps; i++) frame(1 / fps, false); draw(); };
+city.render = () => draw();
+city.ao = (on) => { if (on !== undefined) AO = !!on; return AO; };
 city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles });
 
 (async () => {
