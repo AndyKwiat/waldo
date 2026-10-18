@@ -127,6 +127,8 @@ export function variantRemap(o = {}) { return Object.assign({}, o.roof && rampRe
  * {model, remap, x, y, z, rot} instances (rot in quarter turns); houses carry door data for the sim.
  */
 let STRIP_DOORS = {};
+/** Bigger building types mixed into the outer rows: footprint offsets from the model centre (see FOOT in layout) + roof height. */
+export const BIG_FOOT = { hall_house: { l: 25, r: 25, back: 18, roofY: 36 }, compound: { l: 30, r: 30, back: 19, roofY: 21 } };
 export function layout() {
   placeBumps();
   const statics = [], houses = [], obstacles = [], stalls = [], crops = [], towers = [];
@@ -140,33 +142,48 @@ export function layout() {
   const TYPES = ["home1", "home1", "home2", "home2", "shop", "shop", "inn", "manor", "manor"];
   const stripDoors = (STRIP_DOORS = {});      // "r:c" → door x's facing that street/alley strip (keep alley gardens clear)
   // Away from the centre the rows loosen up ("organic" factor f: 0 near the plaza/palace/avenue → 1 in the outer
-  // districts): uneven spacing, the odd garden gap with trees instead of a third house, deeper setbacks and a slight
-  // skew (≤ ~7.5°). Doors follow each house, so the sim's approaches stay right. Footprints are ~34 wide, ~30 deep.
-  const HALF_W = { inn: 20 }, organicAt = (x, z) => { const d = Math.hypot(x - CENTER.x, z - CENTER.z), t = Math.min(1, Math.max(0, (d - 230) / 260)); return t * t * (3 - 2 * t); };
+  // districts). Rows are filled with a random mix of building types (incl. the big ones) and the spare width is split
+  // unevenly, so neighbours across a street are offset by up to ~half a house; each house also gets its own setback,
+  // so street fronts are jagged. Houses stay square to the street; doors follow each house.
+  // Footprints as offsets from the model centre: l/r = half-widths, back = depth behind the centre (front edge ≈ +13).
+  const FOOT = { home1: { l: 17, r: 17, back: 12 }, home2: { l: 16, r: 16, back: 12 }, shop: { l: 17, r: 17, back: 12 }, inn: { l: 16, r: 20, back: 12 }, manor: { l: 17, r: 17, back: 14 }, ...BIG_FOOT };
+  const BIG = Object.keys(BIG_FOOT);
+  const organicAt = (x, z) => { const d = Math.hypot(x - CENTER.x, z - CENTER.z), t = Math.min(1, Math.max(0, (d - 230) / 260)); return t * t * (3 - 2 * t); };
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
     if (isSpecialBlock(c, r)) continue;
-    const b = block(c, r), f = organicAt(b.x + b.w / 2, b.z + b.d / 2);
+    const b = block(c, r), f = organicAt(b.x + b.w / 2, b.z + b.d / 2), rects = [];
     for (const south of [true, false]) {
-      let n = b.w >= 104 ? 3 : 2; if (n === 3 && chance(0.4 * f)) n = 2;   // sometimes a garden instead of a third house
-      const types = [...Array(n)].map(() => pick(TYPES)), widths = types.map((t) => 17 + (HALF_W[t] ?? 17) + 3);   // + skew margin
-      const slack = Math.max(0, b.w - 6 - widths.reduce((a, w) => a + w, 0)), wts = [...Array(n + 1)].map(() => 1 - f + f * rnd(0.15, 1.85)), sw = wts.reduce((a, w) => a + w, 0);
+      // choose the row's buildings: the old even rows near the centre, a greedy random fill further out
+      let types;
+      if (f < 0.25) types = [...Array(b.w >= 104 ? 3 : 2)].map(() => pick(TYPES));
+      else { types = []; let used = 0;
+        for (let k = 0; k < 6; k++) { const t = BIG.length && chance(0.3 * f) ? pick(BIG) : pick(TYPES), w = FOOT[t].l + FOOT[t].r + 2;
+          if (used + w > b.w - 6) { if (types.length) break; continue; } types.push(t); used += w; if (chance(0.25 * f) && types.length >= 1 && used > b.w * 0.55) break; } }   // sometimes stop early: a garden
+      const widths = types.map((t) => FOOT[t].l + FOOT[t].r + 2), n = types.length;
+      const slack = Math.max(0, b.w - 6 - widths.reduce((a, w) => a + w, 0)), wts = [...Array(n + 1)].map(() => 1 - f + f * rnd(0.05, 1.95)), sw = wts.reduce((a, w) => a + w, 0);
       let cursor = b.x + 3 + slack * wts[0] / sw, prevEnd = b.x;
-      const deepMax = Math.max(0, Math.min(9, b.d / 2 - 33));
       for (let i = 0; i < n; i++) {
-        const type = types[i], x = Math.round(cursor + 17 - (type === "inn" ? -1 : 0)), dz = Math.round(rnd(0, deepMax) * f), skew = rnd(-0.13, 0.13) * f;
-        const z = south ? b.z + b.d - 13 - dz : b.z + 13 + dz, rr = south ? r + 1 : r, yaw = (south ? 0 : Math.PI) + skew;
-        put(type, x, z, yaw / (Math.PI / 2), houseVariant(type));
-        const doorX = Math.round(x + 7 * Math.sin(yaw)), inZ = z + 7 * Math.cos(yaw);   // door threshold ~7 in front of the centre, rotated with the house
-        (stripDoors[rr + ":" + c] ??= []).push(doorX);
-        houses.push({ type, x, z, south, c, r, doorX, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ, roofY: type === "home2" || type === "inn" ? 29 : type === "manor" ? 17 : 23 });
+        const type = types[i], F = FOOT[type], x = Math.round(cursor + 1 + F.l);
+        // setback: as deep as the opposite row allows (houses whose backs overlap this one in x), up to 12
+        const x0 = x - F.l, x1 = x + F.r, front = 13;
+        const opp = rects.filter((q) => q.south !== south && q.x1 > x0 && q.x0 < x1);
+        const backLimit = south ? Math.max(b.z, ...opp.map((q) => q.z1)) + 2 : Math.min(b.z + b.d, ...opp.map((q) => q.z0)) - 2;   // z the back may reach
+        const zFront0 = south ? b.z + b.d - front : b.z + front;   // centre with zero setback
+        const maxDz = Math.max(0, Math.min(12, south ? (zFront0 - F.back) - backLimit : backLimit - (zFront0 + F.back)));
+        const dz = Math.round(rnd(0, maxDz) * f), z = south ? zFront0 - dz : zFront0 + dz, rr = south ? r + 1 : r;
+        put(type, x, z, south ? 0 : 2, houseVariant(type));
+        rects.push({ south, x0, x1, z0: south ? z - F.back : z - 13, z1: south ? z + 13 : z + F.back });
+        (stripDoors[rr + ":" + c] ??= []).push(x);
+        houses.push({ type, x, z, south, c, r, doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 7 : z - 7, roofY: F.roofY ?? (type === "home2" || type === "inn" ? 29 : type === "manor" ? 17 : 23) });
         // a wide gap before this house becomes a little garden at the street front
-        const gapL = prevEnd, gapR = cursor; if (gapR - gapL > 14 && f > 0.3) for (let gx = gapL + 6; gx < gapR - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
+        if (cursor - prevEnd > 14 && f > 0.3) for (let gx = prevEnd + 6; gx < cursor - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
         prevEnd = cursor + widths[i]; cursor = prevEnd + slack * wts[i + 1] / sw;
       }
       if (b.x + b.w - prevEnd > 14 && f > 0.3) for (let gx = prevEnd + 6; gx < b.x + b.w - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
     }
-    for (let i = 0; i < 3; i++) tree(b.x + rnd(8, b.w - 8), b.z + b.d / 2 + rnd(-4, 4));
-    if (chance(0.5)) put(pick(["well", "haystack", "crates", "jars"]), b.x + rnd(14, b.w - 14), b.z + b.d / 2, rndi(0, 3));
+    // back-yard trees in the middle of the block, wherever no house reaches
+    for (let i = 0; i < 4; i++) { const tx = b.x + rnd(8, b.w - 8), tz = b.z + b.d / 2 + rnd(-4, 4); if (!rects.some((q) => tx > q.x0 - 3 && tx < q.x1 + 3 && tz > q.z0 - 3 && tz < q.z1 + 3)) tree(tx, tz); }
+    { const px = b.x + rnd(14, b.w - 14), pz = b.z + b.d / 2; if (chance(0.5) && !rects.some((q) => px > q.x0 - 5 && px < q.x1 + 5 && pz > q.z0 - 5 && pz < q.z1 + 5)) put(pick(["well", "haystack", "crates", "jars"]), px, pz, rndi(0, 3)); }
   }
   // closed side streets become gardens (T-junctions), often with a teahouse at one end facing the open street
   for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) {

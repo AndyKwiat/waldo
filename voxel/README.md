@@ -59,9 +59,11 @@ beyond recedes, at any zoom — before the sky-coloured haze (1400–3800); the 
   walkable network the sim builds its routes from; `cellAt(x,z)` classifies any point. City walls are 24 tall just
   outside the outer street (`WALL` holds the walkway lines sentries patrol). Everything outside `CITY_R` is
   countryside; `occupied(x,z)` says where hills/forest can't go and `groundH(x,z)` is the hill height (0 in the city).
-- **Buildings:** `home1`, `home2`, `shop`, `inn`, `manor` (walled courtyard compound) fill block rows — strictly
-  around the plaza/palace/avenue, loosening with distance from the centre (`organicAt`: uneven spacing, garden gaps
-  with trees, deeper setbacks, up to ~7° skew; doors follow each house); `teahouse`
+- **Buildings:** `home1`, `home2`, `shop`, `inn`, `manor` (walled courtyard compound), and the bigger `hall_house`
+  (two-storey guild hall) and `compound` (warehouse courtyard) fill block rows. Rows are even around the plaza, palace and
+  avenue and loosen with distance from the centre (`organicAt`): a random mix of widths, uneven spacing (so houses across a
+  street are offset), per-house setbacks that make street fronts jagged, and garden gaps with trees. Houses always stay
+  square to the street. Footprints live in `FOOT` / `BIG_FOOT` in `world.js`; `teahouse`
   (three storeys, 20 wide) stands in garden strips. All share the house door convention (door at local x=0, front
   edge ≈ +12, teahouse +10). The palace is `palace_hall` + `palace_wall`s + the `fort_gate` gatehouse, all re-coloured
   to imperial gold.

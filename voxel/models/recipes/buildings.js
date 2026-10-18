@@ -1,6 +1,6 @@
 // Building recipes: houses, shop, inn, pagoda, gates, walls, towers, market stall, plaza pavilion.
 // Front faces +Z. Canonical ROOF / WALL / PILLAR / CLOTH colors get re-colored per variant by the renderer.
-import { G, rng } from "./lib.js";
+import { G, rng, wheel } from "./lib.js";
 import { M, ROOF, WALL, PILLAR, CLOTH, roofRamp, wallRamp, colRamp } from "./colors.js";
 
 const R = roofRamp(ROOF), Wl = wallRamp(WALL), C = colRamp(PILLAR);
@@ -295,5 +295,131 @@ export function palaceWall() {
   const S = 32, g = new G(S);
   g.box(5, 0, 13, 26, 13, 18, (x, y, z) => (x !== 5 && x !== 26 && z !== 13 && z !== 18 && y > 0 && y < 13 ? undefined : y <= 1 ? "#8a2a24" : y === 13 ? "#6a2020" : "#b8302a"));
   for (let x = 5; x <= 26; x++) { for (let z = 12; z <= 19; z++) g.set(x, 14, z, z === 12 || z === 19 ? (x % 3 ? R.cap : R.dark) : R.base); for (let z = 14; z <= 17; z++) g.set(x, 15, z, x % 3 ? R.base : R.dark); g.set(x, 16, 15, R.ridge); g.set(x, 16, 16, R.ridge); }
+  return g;
+}
+
+/** Two-storey merchant guild hall: stone terrace, pillar colonnade porch, skirt roof between storeys, an upper
+ *  gallery/balcony with railing and a big name plaque, a broad main hip roof. Same door convention as the houses:
+ *  door centred at local x=0, front wall local z=+7, porch +8..+10, terrace edge +11, front step +12. Grid 56. */
+export function hallHouse() {
+  const S = 56, c = 28, g = new G(S), rnd = rng(123), X = (v) => c + v, Z = (v) => c + v;
+  // two-step stone terrace + front stair
+  const px0 = X(-24), px1 = X(23), pz0 = Z(-16), pz1 = Z(11);
+  g.box(px0, 0, pz0, px1, 1, pz1, (x, y, z) => (x === px0 || x === px1 || z === pz0 || z === pz1 ? (y === 1 ? M.stone : M.stoneD) : y === 0 ? undefined : (x * 3 + z * 5) % 11 === 0 ? M.stone : M.stoneL));
+  g.box(X(-7), 0, Z(12), X(6), 0, Z(12), (x) => (x === X(-7) || x === X(6) ? M.stone : M.stoneL));
+  // ground floor
+  const x0 = X(-21), x1 = X(20), z0 = Z(-14), z1 = Z(7), H1 = 11;
+  walls(g, x0, x1, z0, z1, 2, H1, rnd);
+  doorAt(g, c, z1, 2, 8, false);
+  for (let y = 2; y <= 10; y++) for (const x of [X(-4), X(3)]) g.set(x, y, z1, y % 3 === 0 ? M.gold : M.red); // wider red door frame
+  for (let x = X(-4); x <= X(3); x++) g.set(x, 10, z1, x % 2 ? M.gold : M.woodD);
+  for (const a of [X(-18), X(-11), X(7), X(14)]) windowAt(g, "front", x0, x1, z0, z1, a, 4, 4, 5, "lattice");
+  for (const a of [X(-16), X(-6), X(2), X(12)]) windowAt(g, "back", x0, x1, z0, z1, a, 4, 4, 5);
+  for (const a of [Z(-10), Z(0)]) { windowAt(g, "left", x0, x1, z0, z1, a, 4, 4, 5, "slats"); windowAt(g, "right", x0, x1, z0, z1, a, 4, 4, 5, "slats"); }
+  // porch colonnade
+  const pz = Z(10);
+  for (const px of [X(-21), X(-14), X(-7), X(6), X(13), X(20)]) { g.set(px, 2, pz, M.stone); g.box(px, 3, pz, px, H1, pz, (x, y) => (y === H1 ? C.d : C.base)); }
+  beamRow(g, x0, x1, H1, pz); beamRow(g, x0, x1, H1, pz - 1); beamRow(g, x0, x1, H1, pz - 2);
+  for (const lx of [X(-18), X(-11), X(10), X(17)]) lantern(g, lx, H1 - 1, pz);
+  // skirt roof between the storeys
+  hipRoof(g, x0 - 3, x1 + 3, z0 - 3, Z(11), H1 + 1, { maxLayers: 3, zs: [1, 1, 1], xs: [1, 1, 1], ridge: false });
+  // upper floor (set back for the balcony)
+  const u0 = X(-17), u1 = X(16), w0 = Z(-12), w1 = Z(2), Y = H1 + 4, H2 = Y + 8;
+  walls(g, u0, u1, w0, w1, Y, H2, rnd, false);
+  for (const a of [X(-14), X(-8), X(5), X(11)]) windowAt(g, "front", u0, u1, w0, w1, a, Y + 2, 4, 4, "lattice");
+  windowAt(g, "front", u0, u1, w0, w1, X(-2), Y, 4, 6, "slats"); // balcony door
+  for (const a of [X(-12), X(-2), X(8)]) windowAt(g, "back", u0, u1, w0, w1, a, Y + 2, 4, 4);
+  for (const a of [Z(-8), Z(-2)]) { windowAt(g, "left", u0, u1, w0, w1, a, Y + 2, 4, 4, "slats"); windowAt(g, "right", u0, u1, w0, w1, a, Y + 2, 4, 4, "slats"); }
+  // balcony deck, railing, gallery posts
+  const bz = Z(8);
+  g.box(u0 - 1, Y - 1, w1 + 1, u1 + 1, Y - 1, bz, (x, y, z) => (z === bz ? M.woodD : x % 2 ? M.wood : M.woodL));
+  for (let x = u0 - 1; x <= u1 + 1; x++) { g.set(x, Y + 1, bz, C.base); if (x % 2 === 0) g.set(x, Y, bz, C.d); }
+  for (const z of [w1 + 1, w1 + 3, w1 + 5]) for (const x of [u0 - 1, u1 + 1]) { g.set(x, Y + 1, z, C.base); g.set(x, Y, z, C.d); }
+  for (const qx of [X(-18), X(-10), X(9), X(17)]) g.box(qx, Y, bz, qx, H2, bz, (x, y) => (y === H2 ? C.d : C.base));
+  beamRow(g, u0 - 1, u1 + 1, H2, bz); beamRow(g, u0 - 1, u1 + 1, H2, bz - 1);
+  for (const lx of [X(-14), X(-6), X(5), X(13)]) lantern(g, lx, H2 - 1, bz);
+  // the hall's name plaque, hung on the balcony railing above the door
+  for (let x = X(-6); x <= X(5); x++) for (let y = Y - 1; y <= Y + 3; y++) {
+    const edge = x === X(-6) || x === X(5) || y === Y - 1 || y === Y + 3;
+    g.set(x, y, bz + 1, edge ? M.gold : (y === Y + 1 && x % 3 !== 2) || (y !== Y + 1 && x % 3 === 0) ? M.gold : M.plaque);
+  }
+  // main roof
+  hipRoof(g, u0 - 5, u1 + 5, w0 - 4, Z(10), H2 + 1, { pearl: true });
+  // terrace dressing: big jars, stone lions by the stair, potted shrubs
+  jarAt(g, X(-23), 2, Z(8), M.jarBlue); jarAt(g, X(21), 2, Z(8), M.jarBlue); jarAt(g, X(-23), 2, Z(-15), M.jarBrown);
+  for (const lx of [X(-10), X(8)]) { g.box(lx, 2, Z(10), lx + 1, 3, Z(11), M.stone); g.box(lx, 4, Z(11), lx + 1, 5, Z(11), M.stoneL); g.set(lx, 5, Z(11), M.stoneD); g.set(lx + 1, 4, Z(11), M.stoneD); }
+  crates(g, X(21), 2, Z(-15));
+  return g;
+}
+
+/** Merchant warehouse compound: a long two-level storehouse at the back (loft doors, hoist), an open storage shed and
+ *  a closed granary as side wings, a tiled-cap front wall with a roofed gatehouse, and a paved yard full of crates,
+ *  jars, hay and an ox cart. Gate centred at local x=0, front wall local z=+9, apron edge +12. Grid 64. */
+export function compound() {
+  const S = 64, c = 32, g = new G(S), rnd = rng(321), X = (v) => c + v, Z = (v) => c + v;
+  const ax0 = X(-28), ax1 = X(27), az0 = Z(-18), az1 = Z(12);
+  g.box(ax0, 0, az0, ax1, 0, az1, (x, y, z) => (x === ax0 || x === ax1 || z === az0 || z === az1 ? M.stoneD
+    : x > X(-19) && x < X(18) && z > Z(-8) && z < Z(9) ? ((x + z) % 2 ? M.stoneL : M.stone) : (x * 3 + z * 5) % 11 === 0 ? M.stone : M.stoneL));
+  // --- storehouse at the back
+  const h0 = X(-25), h1 = X(24), hz0 = Z(-16), hz1 = Z(-8), HH = 15;
+  walls(g, h0, h1, hz0, hz1, 1, HH, rnd);
+  for (let y = 8; y <= 8; y++) for (let x = h0; x <= h1; x++) if (x !== h0 && x !== h1) { g.set(x, y, hz1, M.wood); g.set(x, y, hz0, M.wood); } // floor beam line
+  for (const dx of [X(-12), X(0), X(12)]) { // big ground doors + loft doors above
+    for (let x = dx - 2; x <= dx + 1; x++) for (let y = 1; y <= 5; y++) { g.set(x, y, hz1, null); g.set(x, y, hz1 - 1, x === dx - 1 || x === dx ? M.doorD : M.door); }
+    for (let y = 1; y <= 6; y++) { g.set(dx - 3, y, hz1, M.woodD); g.set(dx + 2, y, hz1, M.woodD); } for (let x = dx - 3; x <= dx + 2; x++) g.set(x, 6, hz1, M.woodD);
+    for (let x = dx - 1; x <= dx; x++) for (let y = 10; y <= 13; y++) { g.set(x, y, hz1, null); g.set(x, y, hz1 - 1, M.woodD); }
+    for (let y = 9; y <= 14; y++) { g.set(dx - 2, y, hz1, M.wood); g.set(dx + 1, y, hz1, M.wood); } for (let x = dx - 2; x <= dx + 1; x++) { g.set(x, 9, hz1 + 1, M.woodL); g.set(x, 14, hz1, M.wood); }
+  }
+  for (const a of [X(-20), X(-7), X(5), X(17)]) windowAt(g, "front", h0, h1, hz0, hz1, a, 10, 3, 3, "slats");
+  for (const a of [X(-20), X(-8), X(4), X(16)]) windowAt(g, "back", h0, h1, hz0, hz1, a, 10, 3, 3, "slats");
+  for (const s of ["left", "right"]) windowAt(g, s, h0, h1, hz0, hz1, Z(-12), 10, 3, 3, "slats");
+  // hoist beam over the middle loft door
+  g.box(X(0), 15, hz1 + 1, X(0), 15, hz1 + 3, M.woodD); g.box(X(0), 11, hz1 + 3, X(0), 14, hz1 + 3, M.straw); g.box(X(-1), 9, hz1 + 3, X(0), 10, hz1 + 3, M.hay);
+  beamRow(g, h0, h1, HH, hz1 + 1);
+  hipRoof(g, h0 - 3, h1 + 3, hz0 - 2, hz1 + 2, HH + 1, { pearl: true });
+  // --- left wing: open storage shed facing the yard
+  const l0 = X(-27), l1 = X(-19), wz0 = Z(-4), wz1 = Z(9), WH = 8;
+  g.shell(l0, 1, wz0, l1, WH, wz1, (x, y, z) => (x === l1 && z !== wz0 && z !== wz1 ? undefined : (x === l0 || x === l1) && (z === wz0 || z === wz1) ? C.base : y <= 2 ? M.skirt : y === WH ? Wl.shadow : rnd() < 0.1 ? Wl.d : Wl.base));
+  for (const z of [wz0 + 4, wz0 + 8]) g.box(l1, 1, z, l1, WH, z, (x, y) => (y === WH ? C.d : C.base));
+  beamRow(g, l0, l1, WH, wz1 + 1); for (let z = wz0; z <= wz1; z++) g.set(l1, WH, z, z % 3 === 0 ? M.gold : M.beam);
+  windowAt(g, "front", l0, l1, wz0, wz1, X(-25), 3, 4, 4, "slats");
+  for (let z = wz0 + 1; z <= wz1 - 1; z++) for (let x = l0 + 1; x <= l0 + 3; x++) { g.set(x, 1, z, M.hay); g.set(x, 2, z, (x + z) % 3 ? M.hay : M.hayD); if (z % 4) g.set(x, 3, z, x === l0 + 3 ? M.hayD : M.hayL); }
+  for (const z of [wz0 + 2, wz0 + 6]) jarAt(g, l0 + 5, 1, z, M.jarBrown);
+  hipRoof(g, l0 - 2, l1 + 2, wz0 - 2, wz1 + 2, WH + 1, { zs: [1, 1, 1], xs: [1, 1, 1] });
+  // --- right wing: closed granary with vents and a big yard door
+  const r0 = X(18), r1 = X(26);
+  walls(g, r0, r1, wz0, wz1, 1, WH, rnd);
+  for (let z = Z(1); z <= Z(4); z++) for (let y = 1; y <= 5; y++) { g.set(r0, y, z, null); g.set(r0 + 1, y, z, z === Z(2) ? M.doorD : M.door); }
+  for (let y = 1; y <= 6; y++) { g.set(r0, y, Z(0), M.woodD); g.set(r0, y, Z(5), M.woodD); } for (let z = Z(0); z <= Z(5); z++) g.set(r0, 6, z, M.woodD);
+  windowAt(g, "front", r0, r1, wz0, wz1, X(20), 4, 4, 3, "slats"); windowAt(g, "right", r0, r1, wz0, wz1, Z(2), 4, 4, 3, "slats");
+  for (const vz of [wz0 + 2, wz1 - 2]) g.set(r1, 7, vz, M.ink);
+  for (const z of [wz0 + 2, wz1 - 2]) jarAt(g, r0 - 2, 1, z, M.jarBlue);
+  hipRoof(g, r0 - 2, r1 + 2, wz0 - 2, wz1 + 2, WH + 1, { zs: [1, 1, 1], xs: [1, 1, 1] });
+  // --- front wall with tiled cap, gatehouse in the middle
+  const fz = Z(9);
+  for (let x = l1 + 1; x <= r0 - 1; x++) {
+    for (let y = 1; y <= 6; y++) g.set(x, y, fz, y === 1 ? M.skirt : y === 6 ? Wl.shadow : rnd() < 0.1 ? Wl.d : Wl.base);
+    g.set(x, 7, fz - 1, x % 3 ? R.base : R.dark); g.set(x, 7, fz + 1, x % 3 ? R.base : R.dark); g.set(x, 7, fz, R.base); g.set(x, 8, fz, R.ridge);
+  }
+  const gx0 = X(-6), gx1 = X(5), gz0 = Z(6), GH = 9;
+  g.shell(gx0, 1, gz0, gx1, GH, fz, (x, y, z) => ((x === gx0 || x === gx1) && (z === gz0 || z === fz) ? C.base : y <= 2 ? M.skirt : y === GH ? Wl.shadow : rnd() < 0.1 ? Wl.d : Wl.base));
+  doorAt(g, c, fz, 1, 7, true);
+  for (let x = c - 2; x <= c + 1; x++) for (let y = 1; y <= 7; y++) { g.set(x, y, fz - 1, null); g.set(x, y, gz0, null); } // open passage
+  for (let x = c - 2; x <= c + 1; x++) g.set(x, 7, gz0, M.woodD);
+  for (const px of [gx0, gx1]) { g.set(px, 1, fz + 2, M.stone); g.box(px, 2, fz + 2, px, GH, fz + 2, (x, y) => (y === GH ? C.d : C.base)); }
+  beamRow(g, gx0, gx1, GH, fz + 2); beamRow(g, gx0, gx1, GH, fz + 1);
+  lantern(g, gx0 + 2, GH - 1, fz + 2); lantern(g, gx1 - 2, GH - 1, fz + 2);
+  hipRoof(g, gx0 - 3, gx1 + 3, gz0 - 1, fz + 2, GH + 1, { zs: [1, 1, 1], xs: [1, 1, 1], pearl: true });
+  // apron in front + stone bollards
+  for (const bx of [X(-10), X(9)]) { g.box(bx, 1, Z(11), bx, 2, Z(11), M.stone); g.set(bx, 3, Z(11), M.stoneL); }
+  // --- yard: crate stacks, jar rows, ox cart with hay, a well
+  crates(g, X(-17), 1, Z(-6)); crates(g, X(-14), 1, Z(-6)); crates(g, X(-17), 1, Z(-3)); crates(g, X(13), 1, Z(-6));
+  for (let i = 0; i < 4; i++) jarAt(g, X(-17) + i * 3, 1, Z(1), i % 2 ? M.jarBrown : M.jarBlue);
+  const cx0 = X(6), cz = Z(1); // cart, shafts toward +x
+  g.box(cx0, 3, cz - 1, cx0 + 6, 3, cz + 2, (x, y, z) => (z === cz - 1 || z === cz + 2 ? M.woodD : M.woodL));
+  g.box(cx0 + 1, 4, cz - 1, cx0 + 5, 5, cz + 2, (x, y, z) => ((x + y + z) % 3 ? M.hay : M.hayD)); g.box(cx0 + 2, 6, cz, cx0 + 4, 6, cz + 1, M.hayL);
+  g.line(cx0 + 7, 3, cz - 1, cx0 + 10, 2, cz - 1, M.woodD); g.line(cx0 + 7, 3, cz + 2, cx0 + 10, 2, cz + 2, M.woodD);
+  wheel(g, cx0 + 3, 2, cz - 2, 2); wheel(g, cx0 + 3, 2, cz + 3, 2);
+  g.box(X(-3), 1, Z(-5), X(2), 1, Z(-4), M.woodL); g.box(X(-3), 2, Z(-5), X(-1), 2, Z(-4), M.veg); g.box(X(0), 2, Z(-5), X(2), 2, Z(-4), M.orange); // produce baskets
   return g;
 }
