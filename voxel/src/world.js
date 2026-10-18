@@ -30,6 +30,11 @@ export const CENTER = { x: PLAZA.x + PLAZA.w / 2, z: PLAZA.z + PLAZA.d / 2 };
 // the colossal marble Jupiter in the middle of the market square (model "statue", 104³ grid, front faces south):
 // stepped pedestal footprint ±hx × ±hz around the centre, h = top of the thunderbolt
 export const STATUE = { x: CENTER.x, z: CENTER.z, hx: 23, hz: 20, h: 95 };
+/** Spots on the statue where pigeons can perch (local offsets; flat ledges with 3 cells of headroom), baked from
+ *  models/statue.json — regenerate with the snippet in README "Statue" if the statue changes. */
+let STATUE_PERCHES = [];
+try { STATUE_PERCHES = typeof process !== "undefined" ? JSON.parse(require("fs").readFileSync(new URL("../models/statue.perches.json", import.meta.url), "utf8")) : await (await fetch(new URL("../models/statue.perches.json", import.meta.url))).json(); } catch { STATUE_PERCHES = []; }
+export { STATUE_PERCHES };
 export const onStatue = (x, z, m = 0) => Math.abs(x - STATUE.x) <= STATUE.hx + m && Math.abs(z - STATUE.z) <= STATUE.hz + m;
 export { PAGODA_BLOCK, PLAZA_R, AV_C };
 export const isSpecialBlock = (c, r) => (PAL_C.includes(c) && PAL_R.includes(r)) || (PAL_C.includes(c) && r === PLAZA_R) || (c === PAGODA_BLOCK[0] && r === PAGODA_BLOCK[1]);
@@ -278,7 +283,7 @@ export function layout() {
   const WHEEL = { x: CITY.x0 - 120, z: RIVER.zc(CITY.x0 - 120) };
   put("home1", WHEEL.x + 36, RIVER.zc(WHEEL.x + 36) + RIVER.hw + 18, 2, { y: 0, remap: variantRemap({ roof: "#6a7fa0" }), remapKey: "|mill" });
   const DOCKS = [CITY.x0 + 140, CITY.x1 - 160];
-  return { statics, houses, obstacles, stalls, crops, towers, beats, pagoda, fort, WHEEL, DOCKS, bumps: BUMPS };
+  return { statics, houses, obstacles, stalls, crops, towers, beats, pagoda, fort, WHEEL, DOCKS, bumps: BUMPS, statuePerches: STATUE_PERCHES };
 }
 
 // ---- ground: one texel per voxel, painted like the 2D map

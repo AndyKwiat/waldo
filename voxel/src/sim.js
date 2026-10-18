@@ -257,8 +257,22 @@ export function createSim(W) {
   for (let i = 0; i < 7; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), speed: rnd(6, 9), activity: "strolling along the river" }); const x = rnd(30, WX - 30); at(e, x, bankZ(x) + e.off); }
 
   // ambient: pigeons, boats, ducks (no collisions)
-  const pigeons = []; const pigeonSpot = () => { if (chance(0.6)) { let x, z; do { x = rnd(PLAZA.x + 4, PLAZA.x + PLAZA.w - 4); z = rnd(PLAZA.z + 4, PLAZA.z + PLAZA.d - 4); } while (Math.hypot(x - CENTER.x, z - CENTER.z) < 33); return { x, z }; } const s = randomStroll(); return { x: s.x + rnd(-8, 8), z: s.z + rnd(-8, 8) }; };
-  for (let i = 0; i < 70; i++) { const s = pigeonSpot(); pigeons.push({ look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: 0, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
+  // Where pigeons go: ~50% the market square, ~12% perched on the statue (pedestal ledge, and now and then its shoulders,
+  // arm or head), ~38% other squares and streets around the city (gardens' edges, junctions, the palace forecourt…).
+  const PERCH = W.statuePerches ?? [];
+  // a handful of favourite haunts away from the market: street junctions spread around the city + the palace forecourt
+  const HAUNTS = [{ x: GATE_X, z: W.fort.outZ + 14 }];
+  for (let k = 0; k < 40 && HAUNTS.length < 9; k++) { const n = pick(PED_NODES), p = NODES[n]; if (Math.hypot(p.x - CENTER.x, p.z - CENTER.z) > 160 && HAUNTS.every((h) => Math.hypot(h.x - p.x, h.z - p.z) > 150)) HAUNTS.push({ x: p.x, z: p.z }); }
+  const perchSpot = () => { const hi = PERCH.filter((p) => p.y > 20), p = hi.length && chance(0.35) ? pick(hi) : pick(PERCH); return { x: STATUE.x + p.x + rnd(-0.3, 0.3), z: STATUE.z + p.z + rnd(-0.3, 0.3), y: p.y, perch: true }; };
+  // each pigeon has a home: the market square (~55%), the statue (~12%: perches, sometimes the square below), or one of
+  // the haunts (~33%); when startled it flies to another spot in its home area, so the mix stays stable
+  const plazaSpot = () => { let x, z; do { x = rnd(PLAZA.x + 4, PLAZA.x + PLAZA.w - 4); z = rnd(PLAZA.z + 4, PLAZA.z + PLAZA.d - 4); } while (Math.hypot(x - CENTER.x, z - CENTER.z) < 33); return { x, z }; };
+  const pigeonSpot = (g) => { const home = g?.home ?? "plaza";
+    if (home === "statue") return PERCH.length && chance(0.75) ? perchSpot() : plazaSpot();
+    if (home === "plaza") return plazaSpot();
+    const h = HAUNTS[home]; return { x: h.x + rnd(-7, 7), z: h.z + rnd(-7, 7) }; };
+  const pigeons = [];
+  for (let i = 0; i < 70; i++) { const home = i < 9 ? "statue" : i < 33 ? (i - 9) % HAUNTS.length : "plaza", s = pigeonSpot({ home }); pigeons.push({ home, look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: s.y ?? 0, gy: s.y ?? 0, perch: !!s.perch, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
   const boats = []; for (let i = 0; i < 10; i++) boats.push({ look: { model: "boat" }, x: rnd(0, WX), vx: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-5, 5), phase: rand() * 9 });
   const ducks = []; for (let fl = 0; fl < 5; fl++) { const x0 = rnd(0, WX), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-7, 7); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
 
@@ -364,12 +378,12 @@ export function createSim(W) {
       if (e.mv && e.face !== undefined) { let d = e.face - e.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); e.yaw += d * Math.min(1, dt * 10); }
     }
     for (const g of pigeons) {
-      if (g.state === "ground") { g.timer -= dt; g.y = 0;
-        if (anyoneNear(g.x, g.z, 4) || (g.timer < 0 && chance(0.002))) { let s, tries = 0; do { s = pigeonSpot(); } while ((Math.hypot(s.x - g.x, s.z - g.z) > 140 || crossesStatue(g.x, g.z, s.x, s.z)) && ++tries < 16);
-          if (crossesStatue(g.x, g.z, s.x, s.z)) { const a = Math.atan2(g.z - STATUE.z, g.x - STATUE.x) + rnd(-0.5, 0.5), r = Math.max(36, Math.hypot(g.x - STATUE.x, g.z - STATUE.z) + rnd(4, 14)); s = { x: STATUE.x + Math.cos(a) * r, z: STATUE.z + Math.sin(a) * r }; }   // never fly through the statue
-          Object.assign(g, { state: "fly", hx: undefined, fx: g.x, fz: g.z, tx: s.x, tz: s.z, ft: 0, fd: Math.max(0.8, Math.hypot(s.x - g.x, s.z - g.z) / 30) }); g.yaw = Math.atan2(s.x - g.x, s.z - g.z); }
-        else { if (g.timer < 0) { g.timer = rnd(1, 4); g.hx = g.x + rnd(-5, 5); g.hz = g.z + rnd(-5, 5); if (onStatue(g.hx, g.hz, 6)) g.hx = undefined; } if (g.hx !== undefined) { const dx = g.hx - g.x, dz = g.hz - g.z, d = Math.hypot(dx, dz); if (d > 0.3) { g.x += (dx / d) * Math.min(d, 4 * dt); g.z += (dz / d) * Math.min(d, 4 * dt); g.yaw = Math.atan2(dx, dz); } else g.hx = undefined; } } }
-      if (g.state === "fly") { g.ft += dt / g.fd; const k = Math.min(1, g.ft); g.x = g.fx + (g.tx - g.fx) * k; g.z = g.fz + (g.tz - g.fz) * k; g.y = Math.sin(Math.PI * k) * Math.min(30, 8 + g.fd * 6); if (k >= 1) { g.state = "ground"; g.timer = rnd(2, 6); } }
+      if (g.state === "ground") { g.timer -= dt; g.y = g.gy ?? 0;
+        if ((!g.perch && anyoneNear(g.x, g.z, 4)) || (g.timer < 0 && chance(g.perch ? 0.012 : 0.002))) { let s, tries = 0; do { s = pigeonSpot(g); } while ((Math.hypot(s.x - g.x, s.z - g.z) > 140 || (!s.perch && !g.perch && crossesStatue(g.x, g.z, s.x, s.z))) && ++tries < 16);
+          if (!s.perch && !g.perch && crossesStatue(g.x, g.z, s.x, s.z)) { const a = Math.atan2(g.z - STATUE.z, g.x - STATUE.x) + rnd(-0.5, 0.5), r = Math.max(36, Math.hypot(g.x - STATUE.x, g.z - STATUE.z) + rnd(4, 14)); s = { x: STATUE.x + Math.cos(a) * r, z: STATUE.z + Math.sin(a) * r }; }   // never fly through the statue
+          Object.assign(g, { state: "fly", hx: undefined, fx: g.x, fz: g.z, fy: g.gy ?? 0, ty: s.y ?? 0, tPerch: !!s.perch, tx: s.x, tz: s.z, ft: 0, fd: Math.max(0.8, Math.hypot(s.x - g.x, s.z - g.z) / 30) }); g.yaw = Math.atan2(s.x - g.x, s.z - g.z); }
+        else if (!g.perch) { if (g.timer < 0) { g.timer = rnd(1, 4); g.hx = g.x + rnd(-5, 5); g.hz = g.z + rnd(-5, 5); if (onStatue(g.hx, g.hz, 6)) g.hx = undefined; } if (g.hx !== undefined) { const dx = g.hx - g.x, dz = g.hz - g.z, d = Math.hypot(dx, dz); if (d > 0.3) { g.x += (dx / d) * Math.min(d, 4 * dt); g.z += (dz / d) * Math.min(d, 4 * dt); g.yaw = Math.atan2(dx, dz); } else g.hx = undefined; } } }
+      if (g.state === "fly") { g.ft += dt / g.fd; const k = Math.min(1, g.ft); g.x = g.fx + (g.tx - g.fx) * k; g.z = g.fz + (g.tz - g.fz) * k; g.y = (g.fy ?? 0) + ((g.ty ?? 0) - (g.fy ?? 0)) * k + Math.sin(Math.PI * k) * Math.min(30, 8 + g.fd * 6); if (k >= 1) { g.state = "ground"; g.timer = rnd(2, 6); g.gy = g.ty ?? 0; g.perch = !!g.tPerch; } }
     }
     for (const b of boats) { b.x += b.vx * dt; if (b.x < -500) b.x = WX + 500; if (b.x > WX + 500) b.x = -500; b.z = RIVER.zc(b.x) + b.lane; b.yaw = b.vx > 0 ? 0 : Math.PI; }
     for (const d of ducks) { const lx = (((d.x0 + d.dir * d.sp * T) % (WX + 600)) + (WX + 600)) % (WX + 600) - 300; d.x = lx - d.dir * d.k * 3.5; d.z = RIVER.zc(d.x) + d.lane + Math.sin(T * 1.3 + d.k) * 0.6; d.yaw = d.dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
