@@ -74,7 +74,8 @@ export function personVoxels(p) {
 }
 
 // ---- animals (front +Z)
-export function animalVoxels(kind, c) {
+/** `pose` (pigeons only): undefined = wings folded, "up" / "down" = the two flight frames. */
+export function animalVoxels(kind, c, pose) {
   const v = [], S = (x, y, z, col) => v.push([x, y, z, col]);
   const box = (x0, y0, z0, x1, y1, z1, col) => { for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) S(x, y, z, col); };
   const dk = (h, f = 0.75) => { const n = parseInt(h.slice(1), 16); return "#" + [16, 8, 0].map((s) => Math.round(((n >> s) & 255) * f).toString(16).padStart(2, "0")).join(""); };
@@ -84,7 +85,10 @@ export function animalVoxels(kind, c) {
     case "cat": box(8, 2, 6, 9, 3, 10, c.color); for (const [x, z] of [[8, 6], [9, 6], [8, 10], [9, 10]]) box(x, 0, z, x, 1, z, dk(c.color));
       box(7, 3, 10, 10, 5, 12, c.color); S(7, 6, 11, c.color); S(10, 6, 11, c.color); S(8, 4, 13, "#f08ab0"); S(8, 5, 12, M.ink); S(10, 5, 12, M.ink);
       box(8, 3, 5, 8, 7, 5, c.stripe ?? c.color); if (c.stripe) { S(8, 4, 8, c.stripe); S(9, 4, 8, c.stripe); S(8, 4, 6, c.stripe); } break;
-    case "pigeon": box(8, 1, 7, 9, 2, 9, c); box(8, 3, 9, 9, 3, 10, dk(c, 0.92)); S(8, 2, 10, "#5aa08a"); S(9, 2, 10, "#5aa08a"); S(8, 3, 11, "#f0c8a0"); S(8, 0, 8, "#e04a3a"); S(9, 0, 8, "#e04a3a"); box(8, 1, 6, 9, 1, 6, dk(c)); break;
+    case "pigeon": box(8, 1, 7, 9, 2, 9, c); box(8, 3, 9, 9, 3, 10, dk(c, 0.92)); S(8, 2, 10, "#5aa08a"); S(9, 2, 10, "#5aa08a"); S(8, 3, 11, "#f0c8a0"); S(8, 0, 8, "#e04a3a"); S(9, 0, 8, "#e04a3a"); box(8, 1, 6, 9, 1, 6, dk(c));
+      if (pose) { const w = dk(c, 0.88), tip = dk(c, 0.6), up = pose === "up";   // spread wings: raised or lowered, mirrored on both sides
+        for (const [x, o] of [[7, 0], [6, 1], [5, 2]]) for (const [xx, side] of [[x, -1], [17 - x, 1]]) box(xx, up ? 2 + o : 2 - o, 7, xx, up ? 2 + o : 2 - o, 9, o === 2 ? tip : w); }
+      break;
     case "chicken": box(8, 1, 7, 9, 3, 9, c); box(8, 4, 9, 9, 5, 10, c); S(8, 6, 10, "#e04a3a"); S(9, 6, 10, "#e04a3a"); S(8, 4, 11, M.orange); S(8, 0, 8, M.orange); S(9, 0, 8, M.orange); box(8, 3, 6, 9, 4, 6, dk(c)); break;
     case "duck": box(7, 0, 6, 9, 1, 10, c.body); box(7, 2, 10, 9, 3, 11, c.head); S(8, 2, 12, "#f0a020"); S(7, 3, 11, M.ink); S(9, 3, 11, M.ink); box(8, 1, 5, 8, 2, 5, dk(c.body)); break;
     case "pig": box(6, 2, 5, 10, 5, 11, "#f0a8a8"); for (const [x, z] of [[6, 5], [10, 5], [6, 11], [10, 11]]) box(x, 0, z, x, 1, z, "#d08a8a"); box(7, 3, 12, 9, 4, 12, "#e08a9a"); S(7, 5, 11, M.ink); S(9, 5, 11, M.ink); S(6, 6, 10, "#f0a8a8"); S(10, 6, 10, "#f0a8a8"); break;

@@ -153,9 +153,9 @@ export function createSim(W) {
   }
 
   const ARCHS = ["farmer", "farmer", "merchant", "merchant", "scholar", "official", "monk", "lady", "lady", "plain", "plain", "plain", "kid", "kid", "porter", "performer", "daoist"];
-  for (let i = 0; i < 1650; i++) { const e = person(pick(ARCHS), { brain: "citizen" }); e.home = e.role === "monk" ? PAGODA : e.role === "merchant" ? pick(SHOPS) : pick(HOMES); initCitizen(e); }
+  for (let i = 0; i < 1100; i++) { const e = person(pick(ARCHS), { brain: "citizen" }); e.home = e.role === "monk" ? PAGODA : e.role === "merchant" ? pick(SHOPS) : pick(HOMES); initCitizen(e); }
   for (const s of W.stalls) { const v = person("merchant", { brain: "idle", w8: 0.05, nocol: true, title: "Stall keeper", activity: "selling wares" }, (p) => { p.item = null; }); at(v, s.x, s.z - s.front * 5); v.yaw = s.front > 0 ? 0 : Math.PI; }
-  for (let i = 0; i < 64; i++) { const [a, b] = pick(SEDGES), t = rnd(0.2, 0.8), hz = NODES[a].z === NODES[b].z; let x = NODES[a].x + (NODES[b].x - NODES[a].x) * t, z = NODES[a].z + (NODES[b].z - NODES[a].z) * t;
+  for (let i = 0; i < 45; i++) { const [a, b] = pick(SEDGES), t = rnd(0.2, 0.8), hz = NODES[a].z === NODES[b].z; let x = NODES[a].x + (NODES[b].x - NODES[a].x) * t, z = NODES[a].z + (NODES[b].z - NODES[a].z) * t;
     if (hz) z += pick([-10, 10]); else x += pick([-10, 10]); const n = chance(0.3) ? 3 : 2;
     for (let k = 0; k < n; k++) { const g = person(pick(["lady", "plain", "merchant", "scholar", "farmer", "kid"]), { brain: "idle", w8: 0.08, activity: "gossiping with the neighbours" }); const ang = (k / n) * Math.PI * 2; at(g, x + Math.cos(ang) * 3.4, z + Math.sin(ang) * 3.4); g.yaw = Math.atan2(x - g.x, z - g.z); } }
 
@@ -197,7 +197,7 @@ export function createSim(W) {
     if (e.home2) { const a = rnd(0, 6.28), r = rnd(e.r0 ?? 20, e.r1 ?? 70); return { x: e.home2.x + Math.cos(a) * r, z: e.home2.z + Math.sin(a) * r }; }
     if (e.band === "fields") { const f = pick(FIELDS); return { x: rnd(f.x, f.x + f.w), z: rnd(f.z, f.z + f.d) }; }
     let x, z, n = 0; do { x = rnd(20, WX - 20); z = rnd(RIVER.zc(x) + RIVER.hw + 12, WZ - 20); } while (occupied(x, z, 4) && ++n < 30); return { x, z }; }
-  for (let i = 0; i < 70; i++) { const p = lookFor(pick(["farmer", "farmer", "farmer", "porter", "kid", "lady", "plain"])), band = i % 3 === 0 ? "fields" : i % 3 === 1 ? "meadow" : "hamlet";
+  for (let i = 0; i < 49; i++) { const p = lookFor(pick(["farmer", "farmer", "farmer", "porter", "kid", "lady", "plain"])), band = i % 3 === 0 ? "fields" : i % 3 === 1 ? "meadow" : "hamlet";
     field({ kind: "person", look: p, brain: "field", band, home2: band === "hamlet" ? pick(HAMLETS) : null, r0: 10, r1: 60, name: pick(FAMS) + " " + pick(GIVEN), title: band === "hamlet" ? "Villager" : TITLES[p.arch], activity: band === "fields" ? "tending the crops" : band === "hamlet" ? "doing chores in the village" : "wandering the countryside", pauseChance: 0.5, cr: 2.4, scale: p.kid ? 0.72 : 1 }); }
   for (const H of HAMLETS) { for (let i = 0; i < 4; i++) field({ kind: "cow", look: { animal: "cow", variant: pick(["spotted", "#8a5a32", "#c8a070"]) }, brain: "field", home2: { x: H.x + rnd(-40, 40), z: H.z + rnd(70, 110) }, r0: 0, r1: 28, speed: rnd(2, 4), cr: 3, hop: 0.4, pauseChance: 0.8, name: pick(PETNAMES), title: "Cow", activity: "grazing" });
     for (let i = 0; i < 6; i++) field({ kind: "sheep", look: { animal: "sheep", variant: 0 }, brain: "field", home2: { x: H.x + rnd(-60, 60), z: H.z - rnd(70, 100) }, r0: 0, r1: 24, speed: rnd(3, 5), cr: 2.2, hop: 0.6, pauseChance: 0.75, name: pick(PETNAMES), title: "Sheep", activity: "grazing" });
@@ -210,11 +210,11 @@ export function createSim(W) {
   const bankZ = (x) => RIVER.zc(x) + RIVER.hw + 3;
   for (const dx of W.DOCKS) for (const ox of [-2, 2]) { const f = person(pick(["farmer", "plain", "kid"]), { brain: "idle", w8: 0.05, activity: "fishing off the dock", title: "Fisher", y: 1 }, (p) => { p.item = "rod"; }); at(f, dx + ox, RIVER.zc(dx) + 2); f.yaw = Math.PI; }
   for (let i = 0; i < 8; i++) { const x = rnd(40, WX - 40); if (Math.abs(x - W.WHEEL.x) < 30) continue; const f = person(pick(["farmer", "plain", "scholar"]), { brain: "idle", w8: 0.05, activity: "fishing in the river", title: "Fisher" }, (p) => { p.item = "rod"; }); at(f, x, bankZ(x)); f.yaw = Math.PI; }
-  for (let i = 0; i < 10; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), speed: rnd(6, 9), activity: "strolling along the river" }); const x = rnd(30, WX - 30); at(e, x, bankZ(x) + e.off); }
+  for (let i = 0; i < 7; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), speed: rnd(6, 9), activity: "strolling along the river" }); const x = rnd(30, WX - 30); at(e, x, bankZ(x) + e.off); }
 
   // ambient: pigeons, boats, ducks (no collisions)
   const pigeons = []; const pigeonSpot = () => { if (chance(0.6)) { let x, z; do { x = rnd(PLAZA.x + 4, PLAZA.x + PLAZA.w - 4); z = rnd(PLAZA.z + 4, PLAZA.z + PLAZA.d - 4); } while (Math.hypot(x - CENTER.x, z - CENTER.z) < 33); return { x, z }; } const s = randomStroll(); return { x: s.x + rnd(-8, 8), z: s.z + rnd(-8, 8) }; };
-  for (let i = 0; i < 140; i++) { const s = pigeonSpot(); pigeons.push({ look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: 0, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
+  for (let i = 0; i < 70; i++) { const s = pigeonSpot(); pigeons.push({ look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: 0, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
   const boats = []; for (let i = 0; i < 10; i++) boats.push({ look: { model: "boat" }, x: rnd(0, WX), vx: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-5, 5), phase: rand() * 9 });
   const ducks = []; for (let fl = 0; fl < 5; fl++) { const x0 = rnd(0, WX), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-7, 7); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
 

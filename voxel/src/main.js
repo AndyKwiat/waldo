@@ -118,9 +118,24 @@ for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) { ribbon(a, b, W.RIVER.z
 for (const r of W.ROADS) if (r.w > r.d) for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) ribbon(a, b, () => r.z + r.d / 2, r.d / 2, 0.03, "#c8a878", layer(3));
 { const r = W.ROADS[0]; const g = new THREE.Mesh(new THREE.PlaneGeometry(r.w, 3000), new THREE.MeshLambertMaterial({ color: "#c8a878", ...layer(3) })); g.rotation.x = -Math.PI / 2; g.position.set(r.x + r.w / 2, 0.03, W.WZ + 1500); scene.add(g); }
 const hills = new THREE.Mesh(W.hillGeometry(L.bumps), vmat); hills.receiveShadow = true; hills.castShadow = true; scene.add(hills);
-{ // translucent river surface
-  const pos = [], idx = []; for (let x = -3000, i = 0; x <= W.WX + 3000; x += 4, i++) { const zc = W.RIVER.zc(x); pos.push(x, 0.25, zc - W.RIVER.hw, x, 0.25, zc + W.RIVER.hw); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
-  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+// River animation: two faint layers of light glints (additive, scrolling at different speeds and directions)
+// over the translucent water, so the surface shimmers and slowly drifts downstream (+x).
+function glintTexture(seed) {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, 256, 64);
+  let t = seed; const r = () => ((t = (t * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 70; i++) { const x = r() * 256, y = r() * 64, w = 6 + r() * 22, a = 0.25 + r() * 0.6; g.fillStyle = `rgba(255,255,255,${a})`;
+    for (const dx of [-256, 0, 256]) for (const dy of [-64, 0, 64]) g.fillRect(Math.round(x + dx), Math.round(y + dy), Math.round(w), 1 + (r() < 0.3 ? 1 : 0)); }
+  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = THREE.NearestFilter; return tex;
+}
+const riverGlints = [];
+{ // translucent river surface (+ glint layers)
+  const pos = [], uv = [], idx = []; for (let x = -3000, i = 0; x <= W.WX + 3000; x += 4, i++) { const zc = W.RIVER.zc(x); pos.push(x, 0.25, zc - W.RIVER.hw, x, 0.25, zc + W.RIVER.hw); uv.push(x / 64, 0, x / 64, 1); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  for (const [seed, y, op, speed, wob] of [[7, 0.32, 0.22, 0.018, 0.8], [91, 0.36, 0.16, -0.009, 1.3]]) {
+    const map = glintTexture(seed); map.repeat.set(1, 0.5);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -24 }));
+    m.position.y = y - 0.25; m.renderOrder = 2; scene.add(m); riverGlints.push({ map, speed, wob, op, mat: m.material });
+  }
   const water = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: "#5ab8f0", transparent: true, opacity: 0.4 })); water.receiveShadow = true; scene.add(water);
 }
 
@@ -170,10 +185,10 @@ function crops() { // 3D crop rows on the farm fields: cabbages and wheat
 const sim = createSim(L); city.sim = sim;
 const actorMeshes = new Map(); const pickables = [];
 const lookKey = (look) => (look.model ? "m:" + look.model : look.animal ? `a:${look.animal}:${look.variant}` : look);
-function animalGrid(look) {
+function animalGrid(look, pose) {
   const k = look.animal, v = look.variant;
   const c = k === "dog" ? DOG_COLORS[v % DOG_COLORS.length] : k === "cat" ? CAT_LOOKS[v % CAT_LOOKS.length] : k === "pigeon" ? PIGEON_COLORS[v % PIGEON_COLORS.length] : k === "duck" ? DUCK_LOOKS[v % DUCK_LOOKS.length] : k === "chicken" ? ["#fff4d8", "#c88a5a", "#3a3440", "#f0b830"][v % 4] : v; // cows/sheep carry their colour in the variant
-  return gridFromVoxels(animalVoxels(k, c), 16);
+  return gridFromVoxels(animalVoxels(k, c, pose), 16);
 }
 async function buildActors() {
   const all = [...sim.ents.map((e) => ({ a: e, pick: true })), ...sim.pigeons.map((a) => ({ a })), ...sim.boats.map((a) => ({ a })), ...sim.ducks.map((a) => ({ a }))];
@@ -185,6 +200,11 @@ async function buildActors() {
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.userData.actors = list.map((x) => x.a);
     list.forEach((x, i) => { x.a._mesh = im; x.a._slot = i; x.a.hp = Math.random() * 6; });
     scene.add(im); actorMeshes.set(k, im); if (list[0].pick) pickables.push(im);
+    if (look.animal === "pigeon") { // flight frames: wings up / wings down, same slots as the folded mesh
+      const poses = ["up", "down"].map((pose) => { const m = new THREE.InstancedMesh(meshVoxels(animalGrid(look, pose), { pivot: "base" }), vmat, list.length);
+        m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); actorMeshes.set(k + ":" + pose, m); return m; });
+      for (const x of list) x.a._poses = poses;
+    }
   }));
 }
 // Vehicle wheels: one InstancedMesh per wheeled model (WHEELS in props.js), spun by distance travelled / radius.
@@ -224,11 +244,17 @@ function updateActors(dt) {
     const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;   // slower walkers bob less
     place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
   }
-  for (const g of sim.pigeons) place(g, g.x, g.y + (g.state === "fly" ? Math.abs(Math.sin(sim.time * 14 + g.phase)) * 0.6 : 0), g.z, g.yaw, 1);
+  for (const g of sim.pigeons) { // folded on the ground; flying birds alternate the wings-up / wings-down meshes
+    const fly = g.state === "fly", flap = Math.sin(sim.time * 14 + g.phase), y = g.y + (fly ? Math.abs(flap) * 0.6 : 0), main = g._mesh;
+    const show = fly ? g._poses[flap > 0 ? 0 : 1] : main;
+    for (const m of [main, ...g._poses]) { g._mesh = m; place(g, g.x, y, g.z, g.yaw, m === show ? 1 : 0); }
+    g._mesh = main;
+  }
   for (const b of sim.boats) place(b, b.x, -0.6 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
   for (const d of sim.ducks) place(d, d.x, -0.2 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
   for (const im of actorMeshes.values()) im.instanceMatrix.needsUpdate = true;
   updateVehicleWheels();
+  for (const [i, gl] of riverGlints.entries()) { gl.map.offset.x -= gl.speed * dt * 4; gl.map.offset.y = Math.sin(sim.time * 0.35 * gl.wob + i) * 0.06; gl.mat.opacity = gl.op * (0.8 + 0.2 * Math.sin(sim.time * gl.wob * 1.7 + i * 2)); }
   if (wheel) wheel.rotation.z = -sim.time * 0.8;
 }
 
