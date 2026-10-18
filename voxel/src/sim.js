@@ -256,6 +256,7 @@ export function createSim(W) {
   for (let i = 0; i < 8; i++) { const x = rnd(40, WX - 40); if (Math.abs(x - W.WHEEL.x) < 30) continue; const f = person(pick(["farmer", "plain", "scholar"]), { brain: "idle", w8: 0.05, activity: "fishing in the river", title: "Fisher" }, (p) => { p.item = "rod"; }); at(f, x, bankZ(x)); f.yaw = Math.PI; }
   for (let i = 0; i < 7; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), speed: rnd(6, 9), activity: "strolling along the river" }); const x = rnd(30, WX - 30); at(e, x, bankZ(x) + e.off); }
 
+  for (const e of ents) { if (e.kind === "vehicle") { e.turn = e.look.model === "barrow" ? 2.2 : 1.1; e.head = e.yaw; } else if (["cow", "pig", "sheep"].includes(e.kind)) { e.turn = 1.4; e.head = e.yaw; } }
   // ambient: pigeons, boats, ducks (no collisions)
   // Where pigeons go: ~50% the market square, ~12% perched on the statue (pedestal ledge, and now and then its shoulders,
   // arm or head), ~38% other squares and streets around the city (gardens' edges, junctions, the palace forecourt…).
@@ -300,13 +301,19 @@ export function createSim(W) {
   const walkPath = (e, dt) => {
     if (!e.path || e.pi >= e.path.length) return true;
     const p = e.path[e.pi], dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz);
-    if (d <= Math.max(e.pi === e.path.length - 1 ? (e.dest && e.dest.hide ? 4 : e.dest && e.dest.kind === "stall" ? 4.5 : 2.5) : 1.2, e.speed * dt)) { e.x = p.x; e.z = p.z; e.pi++; e.stuck = 0; e.mv = true; return e.pi >= e.path.length; }
+    if (d <= Math.max(e.pi === e.path.length - 1 ? (e.dest && e.dest.hide ? 4 : e.dest && e.dest.kind === "stall" ? 4.5 : 2.5) : e.turn ? 7 : 1.2, e.speed * dt)) { e.x = p.x; e.z = p.z; e.pi++; e.stuck = 0; e.mv = true; return e.pi >= e.path.length; }
     const [ux, uz, cap] = d > 3 ? steer(e, dx / d, dz / d) : [dx / d, dz / d, 1];
     // ease toward the allowed speed (no instant stop/start), and count as waiting when nearly stopped
     e.cur = (e.cur ?? e.speed) + (e.speed * cap - (e.cur ?? e.speed)) * Math.min(1, dt * (cap < 1 ? 6 : 2.5));
     if (!Number.isFinite(e.cur)) e.cur = e.speed;
     e.spd = e.cur; e.waiting = e.waiting ? e.cur < e.speed * 0.3 : e.cur < e.speed * 0.1; e.waitT = e.waiting ? (e.waitT ?? 0) + dt : 0;   // hysteresis: no flicker
     if (e.waiting) { e.hx = ux; e.hz = uz; return false; }   // standing in line, still facing the way they're going
+    if (e.turn) { // carts and big animals can't turn on the spot: heading turns at most e.turn rad/s, and they slow into sharp turns
+      const want = Math.atan2(ux, uz); e.head ??= want; let dA = Math.atan2(Math.sin(want - e.head), Math.cos(want - e.head));
+      const step = Math.max(-e.turn * dt, Math.min(e.turn * dt, dA)); e.head += step; dA -= step;
+      const v = e.cur * dt * Math.max(0.25, Math.cos(Math.min(Math.PI / 2, Math.abs(dA)))); const hx = Math.sin(e.head), hz = Math.cos(e.head);
+      e.x += hx * v; e.z += hz * v; e.mv = true; e.hx = hx; e.hz = hz; e.face = e.head; e.yaw = e.head; return false;
+    }
     const v = e.cur * dt; e.x += ux * v; e.z += uz * v; e.mv = true; e.hx = ux; e.hz = uz; e.face = Math.atan2(ux, uz); return false;
   };
   const stepToward = (e, tx, tz, speed, dt, stop = 0.6) => { const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d <= stop) return true; const v = Math.min(d, speed * dt); e.x += (dx / d) * v; e.z += (dz / d) * v; e.face = Math.atan2(dx, dz); e.hx = dx / d; e.hz = dz / d; e.spd = dt > 0 ? v / dt : speed; e.mv = true; return false; };
