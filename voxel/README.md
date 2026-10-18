@@ -17,7 +17,7 @@ bun run statue              # rebuild the giant statue (a Voxer recipe file, bui
 (orbiting keeps following; right-drag, WASD or Esc stops).
 **Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
 **URL params:** `?view=town|overview|city|district|alley|plaza|statue|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
-fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key / AO button) · `&nosky` (no baked sky occlusion) · `&nodark` (no distance darkening; **F** key / DEPTH FOG button).
+fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key / AO button) · `&nosky` (no baked sky occlusion) · `&nodark` (no distance darkening; **F** key / DEPTH FOG button) · `&night` (start at night; **N** key / NIGHT button).
 
 ## Layout
 
@@ -28,6 +28,7 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao
 | `src/world.js` | world layout (street grid, blocks, plaza, fort, walls, river, paddies, fields, hamlets, roads, hills), static placements, ground texture, mountain + hill meshes, `groundH(x,z)` |
 | `src/sim.js` | street graph + shortest routes, places with door approaches, citizens/vehicles/soldiers/pets/livestock/pigeons/boats/ducks, crowd steering + collisions |
 | `src/people.js` | procedural voxel people (archetype looks) and animals |
+| `src/night.js` | night mode: glow-face geometry, light sources from glowing voxels, light-map splatting, night sky |
 | `src/skyao.js` | baked sky occlusion: model column tops → height map → horizon AO → bilinear sampler (pure JS) |
 | `src/voxels.js` | Voxer scene decoding + face-culled greedy mesher (merges flat faces with equal color and AO) with per-vertex ambient occlusion |
 | `models/recipes/*.js` | model recipes (Voxer draw ops); `colors.js` is shared with the browser for variant re-coloring |
@@ -48,7 +49,16 @@ up on walls or roofs), so alleys, courtyards and the foot of the walls read dark
 **Distance darkening ("depth fog"):** every fogged material's shader gets a shared-uniform dimming (up to ~45%, cool
 blue) that ramps from the orbit-target distance (×0.9) to twice it — what you look at stays bright, whatever is
 beyond recedes, at any zoom — before the sky-coloured haze (1400–3800); the sky itself stays bright.
-**Toggles:** buttons bottom-right (**AO**, **DEPTH FOG**), keys **O** / **F**, `city.fx({ao, dark})`; `?noao` / `?nodark` start them off.
+**Night mode** (`src/night.js`, graphics only — the sim is unchanged): eases over ~2 s. Moon replaces the sun (cool,
+dim, soft shadows), hemisphere/fill drop, a gradient sky dome with stars and a moon follows the camera, fog goes navy.
+Lantern bodies (`M.lantern`) and paper windows (`M.paper`) glow: an additive overlay of just their exposed faces per
+model, plus bloom. Light pools come from one baked top-down **light map** (2 units/px over the whole world): every glowing
+voxel cluster in every placed model, wall-top torches and four braziers around the statue are splatted as radial
+gradients — R channel for street-level lights (fades above ~y 20), G for high lights (a band around y 26). Every Lambert
+material adds `diffuse × warm × lightmap × height falloff × uNight` in its shader, so ground, walls, people and animals are
+all lit by thousands of lamps with a single texture lookup. Add a light: give a model `M.lantern` / `M.paper` voxels, or
+push into `lights` in `buildNight()`.
+**Toggles:** buttons bottom-right (**NIGHT**, **AO**, **DEPTH FOG**), keys **N** / **O** / **F**, `city.fx({night, ao, dark})`; `?noao` / `?nodark` start them off.
 
 ## Conventions
 - **World:** 1 unit = 1 voxel. x east, z south, y up. An 8×8 grid of blocks with irregular column widths / row

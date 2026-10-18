@@ -6,12 +6,14 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import * as W from "./world.js";
 import { loadModel, meshVoxels, gridFromVoxels } from "./voxels.js";
 import { personVoxels, animalVoxels, DOG_COLORS, CAT_LOOKS, PIGEON_COLORS, DUCK_LOOKS } from "./people.js";
 import { createSim } from "./sim.js";
 import { WHEELS, wheelModel } from "../models/recipes/props.js";
 import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
+import { glowGeometry, lightSources, lightMapCanvas, nightSky } from "./night.js";
 
 const qs = new URLSearchParams(location.search);
 if (qs.get("seed")) W.setSeed(+qs.get("seed"));
@@ -21,11 +23,25 @@ const LOW = qs.has("low");           // cheaper rendering for headless screensho
 // the camera, so the foreground pops and far districts recede. Injected into each fogged material's shader with one
 // shared uniform, so it costs nothing and can be toggled live (F key / button / city.fx({dark}); `?nodark` starts off).
 const distDark = { value: qs.has("nodark") ? 0 : 1 }, distFocus = { value: 300 };   // focus = distance to the orbit target (updated per frame)
+// Night lighting (night.js): one top-down light map of every lantern / window / torch; lit materials add
+// diffuse × light × height falloff, scaled by uNight (0 by day → no-op).
+const nightU = { uNight: { value: 0 }, uLightMap: { value: null }, uLightRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uLightGain: { value: 1.15 } };
 function addDistanceDarkening(root) {
   root.traverse((o) => { for (const m of [o.material].flat()) { if (!m || !m.fog || m.userData.distDark) continue; m.userData.distDark = true;
-    m.onBeforeCompile = (sh) => { sh.uniforms.uDistDark = distDark; sh.uniforms.uDistFocus = distFocus; sh.fragmentShader = "uniform float uDistDark;\nuniform float uDistFocus;\n" + sh.fragmentShader.replace("#include <fog_fragment>",
-      "#ifdef USE_FOG\n\tgl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.52, 0.57, 0.74 ), smoothstep( uDistFocus * 0.9, uDistFocus * 2.0, vFogDepth ) * uDistDark );\n#endif\n#include <fog_fragment>"); };
-    m.customProgramCacheKey = () => "distDark"; m.needsUpdate = true; } });
+    const lit = m.isMeshLambertMaterial;
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uDistDark = distDark; sh.uniforms.uDistFocus = distFocus; Object.assign(sh.uniforms, nightU);
+      let night = "";
+      if (lit) {
+        sh.vertexShader = "varying vec3 vNightWP;\n" + sh.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n\tvec4 nwp = vec4( transformed, 1.0 );\n#ifdef USE_INSTANCING\n\tnwp = instanceMatrix * nwp;\n#endif\n\tvNightWP = ( modelMatrix * nwp ).xyz;");
+        night = "\tif ( uNight > 0.0 ) { vec2 luv = ( vNightWP.xz - uLightRect.xy ) / uLightRect.zw; if ( luv.x > 0.0 && luv.y > 0.0 && luv.x < 1.0 && luv.y < 1.0 ) {" +
+          " vec2 lm = texture2D( uLightMap, luv ).rg; float lo = lm.r * clamp( 1.0 - ( vNightWP.y - 5.0 ) / 15.0, 0.04, 1.0 ); float hi = lm.g * ( 1.0 - smoothstep( 4.0, 30.0, abs( vNightWP.y - 26.0 ) ) );" +
+          " gl_FragColor.rgb += diffuseColor.rgb * vec3( 1.0, 0.62, 0.32 ) * ( lo + hi ) * uNight * uLightGain; } }\n";
+      }
+      sh.fragmentShader = "uniform float uDistDark;\nuniform float uDistFocus;\nuniform float uNight;\nuniform sampler2D uLightMap;\nuniform vec4 uLightRect;\nuniform float uLightGain;\n" + (lit ? "varying vec3 vNightWP;\n" : "") +
+        sh.fragmentShader.replace("#include <fog_fragment>", "#ifdef USE_FOG\n\tgl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.52, 0.57, 0.74 ), smoothstep( uDistFocus * 0.9, uDistFocus * 2.0, vFogDepth ) * uDistDark );\n#endif\n" + night + "#include <fog_fragment>");
+    };
+    m.customProgramCacheKey = () => "distDark+night" + (lit ? "L" : ""); m.needsUpdate = true; } });
 }
 const city = (window.city = { ready: false });
 const setStatus = (t) => { const el = document.getElementById("loading"); if (el) el.textContent = t; };
@@ -57,6 +73,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure
 // Post-processing: scene → GTAO (screen-space ambient occlusion, denoised) → output (tone mapping + sRGB).
 // `?noao` (or the O key) renders straight to the screen instead. The composer target keeps 4× MSAA.
 let AO = !qs.has("noao");
+let night = qs.has("night") ? 1 : 0, nightTarget = night;   // 0 = day … 1 = night (eased); N key / NIGHT button / ?night
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: LOW ? 0 : 4 }));
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.addPass(new RenderPass(scene, camera));
@@ -65,12 +82,13 @@ gtao.updateGtaoMaterial({ radius: 6, distanceExponent: 1.4, thickness: 3, scale:
 gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: LOW ? 8 : 16 });
 gtao.blendIntensity = 1.0;
 composer.addPass(gtao);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0, 0.55, 0.92); bloom.enabled = false; composer.addPass(bloom);   // night glow halos
 composer.addPass(new OutputPass());
 renderer.info.autoReset = false;   // count every pass of a frame (stats)
 renderer.shadowMap.autoUpdate = false;   // the GTAO normal pass re-renders the scene: draw the shadow map once per frame, not per pass
-const draw = () => { renderer.info.reset(); renderer.shadowMap.needsUpdate = true; if (AO) composer.render(); else renderer.render(scene, camera); };
+const draw = () => { renderer.info.reset(); renderer.shadowMap.needsUpdate = true; gtao.enabled = AO; if (AO || night > 0.01) composer.render(); else renderer.render(scene, camera); };
 // Effect toggles: small buttons bottom-right + keys (O = ambient occlusion, F = distance darkening)
-const FX = { ao: { label: "AO", key: "o", get: () => AO, set: (v) => { AO = v; } }, dark: { label: "DEPTH FOG", key: "f", get: () => distDark.value > 0, set: (v) => { distDark.value = v ? 1 : 0; } } };
+const FX = { night: { label: "NIGHT", key: "n", get: () => nightTarget > 0, set: (v) => { nightTarget = v ? 1 : 0; } }, ao: { label: "AO", key: "o", get: () => AO, set: (v) => { AO = v; } }, dark: { label: "DEPTH FOG", key: "f", get: () => distDark.value > 0, set: (v) => { distDark.value = v ? 1 : 0; } } };
 const fxBar = document.getElementById("fx");
 for (const [k, f] of Object.entries(FX)) { const b = document.createElement("button"); b.dataset.fx = k; b.title = `toggle (${f.key.toUpperCase()} key)`; b.onclick = () => { f.set(!f.get()); syncFx(); }; fxBar?.appendChild(b); }
 function syncFx() { for (const b of fxBar?.children ?? []) { const f = FX[b.dataset.fx]; b.textContent = `${f.label} ${f.get() ? "ON" : "OFF"}`; b.classList.toggle("on", f.get()); } }
@@ -273,6 +291,56 @@ async function bakeSkyOcclusion() {
 /** Actor tint from the sky occlusion where it stands (less when up on a wall or roof). */
 function aoTint(e, y) { const d = aoDark(occAt(e.x, e.z)) * 0.45 * Math.max(0, 1 - y / 12); return AOC.copy(WHITE).lerp(AO_TINT, d); }
 
+// ---------- night mode: glowing lanterns/windows, torch-lit walls, warm light pools (light map), moon + night sky
+const DAY = { bg: new THREE.Color("#7cc6f4"), fog: new THREE.Color("#a2d6f4"), hemiS: new THREE.Color("#dcecff"), hemiG: new THREE.Color("#7a6a4a"), sun: new THREE.Color("#ffe8c8") };
+const NGT = { bg: new THREE.Color("#070c20"), fog: new THREE.Color("#18234a"), hemiS: new THREE.Color("#3a4c86"), hemiG: new THREE.Color("#181822"), sun: new THREE.Color("#9fb6ff") };
+const glowMats = []; let sky = null;
+async function buildNight() {
+  const lights = [], byModel = new Map();
+  for (const st of L.statics) (byModel.get(st.model) ?? byModel.set(st.model, []).get(st.model)).push(st);
+  for (const [model, list] of byModel) {
+    const g = await loadModel(model), geo = glowGeometry(g); if (!geo) continue;
+    const ls = lightSources(g);
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+    const im = new THREE.InstancedMesh(geo, mat, list.length); im.frustumCulled = false; im.visible = false;
+    list.forEach((st, i) => {
+      Q.setFromAxisAngle(UP, st.rot * Math.PI / 2); im.setMatrixAt(i, M4.compose(V.set(st.x, st.y, st.z), Q, SC.set(1, 1, 1)));
+      const a = st.rot * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
+      for (const l of ls) lights.push({ x: st.x + l.x * ca + l.z * sa, z: st.z - l.x * sa + l.z * ca, kind: l.kind });
+    });
+    scene.add(im); glowMats.push({ mat, im });
+  }
+  // torches along the city wall walkways (skipping the south gate)
+  const torches = [], H = W.WALL.h;
+  for (const z of [W.WALL.n, W.WALL.s]) for (let x = W.CITY.x0 + 20; x < W.CITY.x1 - 10; x += 46) if (!(z === W.WALL.s && Math.abs(x - W.GATE_X) < 36)) torches.push([x, z]);
+  for (const x of [W.WALL.w, W.WALL.e]) for (let z = W.CITY.z0 + 20; z < W.CITY.z1 - 10; z += 46) torches.push([x, z]);
+  for (const t of torches) t.push(H);
+  // braziers around the statue's pedestal light the figure from below (the high light band reaches its body)
+  for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; torches.push([W.STATUE.x + Math.cos(a) * 31, W.STATUE.z + Math.sin(a) * 29, 0]); }
+  const pole = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 4, 0.7), new THREE.MeshLambertMaterial({ color: "#3a2618" }), torches.length);
+  const flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.1, 0.35), fog: false, transparent: true, opacity: 0 });
+  const flame = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1.6, 1.4), flameMat, torches.length); flame.visible = false;
+  torches.forEach(([x, z, y], i) => { pole.setMatrixAt(i, M4.makeTranslation(x, y + 2, z)); flame.setMatrixAt(i, M4.makeTranslation(x, y + 4.8, z)); lights.push({ x, z, kind: y ? "torch" : "brazier" }); });
+  scene.add(pole, flame); glowMats.push({ mat: flameMat, im: flame, opacityMode: true });
+  // the light map covers the whole world
+  const rect = { x: 0, z: 0, w: W.WX, d: W.WZ }, lm = new THREE.CanvasTexture(lightMapCanvas(lights, rect, 2));
+  lm.flipY = false; lm.colorSpace = THREE.NoColorSpace; lm.minFilter = THREE.LinearFilter; lm.generateMipmaps = false;
+  nightU.uLightMap.value = lm; nightU.uLightRect.value.set(rect.x, rect.z, rect.w, rect.d);
+  sky = nightSky(new THREE.Vector3(-260, 420, 220)); scene.add(sky.group);
+  city.nightLights = lights.length;
+}
+function applyNight(n) {
+  scene.background.copy(DAY.bg).lerp(NGT.bg, n); scene.fog.color.copy(DAY.fog).lerp(NGT.fog, n);
+  scene.fog.near = 1400 - 700 * n; scene.fog.far = 3800 - 900 * n;
+  hemi.color.copy(DAY.hemiS).lerp(NGT.hemiS, n); hemi.groundColor.copy(DAY.hemiG).lerp(NGT.hemiG, n); hemi.intensity = 0.8 - 0.42 * n;
+  sun.color.copy(DAY.sun).lerp(NGT.sun, n); sun.intensity = 3.0 - 2.55 * n; fill.intensity = 0.55 - 0.47 * n;
+  renderer.toneMappingExposure = 1.12 + 0.05 * n;
+  nightU.uNight.value = n;
+  for (const g of glowMats) { g.im.visible = n > 0.01; if (g.opacityMode) g.mat.opacity = n; else g.mat.color.setScalar(1.6 * n); }
+  bloom.enabled = n > 0.01; bloom.strength = 0.9 * n;
+  sky?.set(n);
+}
+
 let wheel = null;
 async function buildWheel() { wheel = new THREE.Mesh(await modelGeometry("waterwheel", null, "waterwheel"), vmat); wheel.castShadow = true; wheel.position.set(L.WHEEL.x, 10, W.RIVER.zc(L.WHEEL.x) - 3); scene.add(wheel); }
 
@@ -299,6 +367,8 @@ function updateActors(dt) {
   for (const d of sim.ducks) place(d, d.x, -0.2 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
   for (const im of actorMeshes.values()) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   updateVehicleWheels();
+  if (night !== nightTarget) { night += (nightTarget - night) * Math.min(1, dt * 1.6); if (Math.abs(nightTarget - night) < 0.004) night = nightTarget; applyNight(night); }
+  if (sky) sky.group.position.copy(camera.position);
   for (const [i, gl] of riverGlints.entries()) { gl.map.offset.x -= gl.speed * dt * 4; gl.map.offset.y = Math.sin(sim.time * 0.35 * gl.wob + i) * 0.06; gl.mat.opacity = gl.op * (0.8 + 0.2 * Math.sin(sim.time * gl.wob * 1.7 + i * 2)); }
   if (wheel) wheel.rotation.z = -sim.time * 0.8;
 }
@@ -353,7 +423,7 @@ city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.inf
   try {
     setStatus("BUILDING THE CITY...");
     tufts(); crops(); bushes();
-    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); await bakeSkyOcclusion(); addDistanceDarkening(scene);
+    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); await bakeSkyOcclusion(); await buildNight(); addDistanceDarkening(scene); applyNight(night);
     setView(qs.get("view") ?? "town");
     if (qs.get("t")) city.advance(+qs.get("t"));
     document.getElementById("loading")?.remove();
