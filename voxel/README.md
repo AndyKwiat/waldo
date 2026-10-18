@@ -78,7 +78,9 @@ see them (`celestial()` in `night.js`).
   (two-storey guild hall) and `compound` (warehouse courtyard) fill block rows. Rows are even around the plaza, palace and
   avenue and loosen with distance from the centre (`organicAt`): a random mix of widths, uneven spacing (so houses across a
   street are offset), per-house setbacks that make street fronts jagged, and garden gaps with trees. Houses always stay
-  square to the street. Footprints live in `FOOT` / `BIG_FOOT` in `world.js`; `teahouse`
+  square to the street. About one slot in ten (more in the outer districts) is a `garden_flower` or `garden_pond`
+  instead (no door). Landmark trees `tree_camphor` and `tree_ginkgo` (46–48 tall, above every house) stand in about a quarter
+  of the back-yard strips (≥ 80 apart) and near most hamlets (`GARDENS` / `GIANT_TREES`). Footprints live in `FOOT` / `BIG_FOOT` in `world.js`; `teahouse`
   (three storeys, 20 wide) stands in garden strips. All share the house door convention (door at local x=0, front
   edge ≈ +12, teahouse +10). The palace is `palace_hall` + `palace_wall`s + the `fort_gate` gatehouse, all re-coloured
   to imperial gold.

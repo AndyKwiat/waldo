@@ -128,10 +128,12 @@ export function variantRemap(o = {}) { return Object.assign({}, o.roof && rampRe
  */
 let STRIP_DOORS = {};
 /** Bigger building types mixed into the outer rows: footprint offsets from the model centre (see FOOT in layout) + roof height. */
+/** Garden plots that take a building slot (no door), and landmark trees taller than the houses. */
+export const GARDENS = ["garden_flower", "garden_pond"], GIANT_TREES = ["tree_camphor", "tree_ginkgo"];
 export const BIG_FOOT = { hall_house: { l: 25, r: 25, back: 18, roofY: 36 }, compound: { l: 30, r: 30, back: 19, roofY: 21 } };
 export function layout() {
   placeBumps();
-  const statics = [], houses = [], obstacles = [], stalls = [], crops = [], towers = [];
+  const statics = [], houses = [], obstacles = [], stalls = [], crops = [], towers = [], giants = [];
   const put = (model, x, z, rot = 0, o = {}) => { const s = { model, x, y: o.y ?? groundH(x, z), z, rot, remap: o.remap ?? null, key: model + (o.remapKey ?? "") }; statics.push(s); return s; };
   const ob = (x, z, r) => obstacles.push({ x, z, r });
   const TREES = ["tree_round", "tree_round", "tree_fruit", "tree_blossom", "tree_pine", "bamboo"];
@@ -146,7 +148,7 @@ export function layout() {
   // unevenly, so neighbours across a street are offset by up to ~half a house; each house also gets its own setback,
   // so street fronts are jagged. Houses stay square to the street; doors follow each house.
   // Footprints as offsets from the model centre: l/r = half-widths, back = depth behind the centre (front edge ≈ +13).
-  const FOOT = { home1: { l: 17, r: 17, back: 12 }, home2: { l: 16, r: 16, back: 12 }, shop: { l: 17, r: 17, back: 12 }, inn: { l: 16, r: 20, back: 12 }, manor: { l: 17, r: 17, back: 14 }, ...BIG_FOOT };
+  const FOOT = { garden_flower: { l: 17, r: 17, back: 12 }, garden_pond: { l: 17, r: 17, back: 12 }, home1: { l: 17, r: 17, back: 12 }, home2: { l: 16, r: 16, back: 12 }, shop: { l: 17, r: 17, back: 12 }, inn: { l: 16, r: 20, back: 12 }, manor: { l: 17, r: 17, back: 14 }, ...BIG_FOOT };
   const BIG = Object.keys(BIG_FOOT);
   const organicAt = (x, z) => { const d = Math.hypot(x - CENTER.x, z - CENTER.z), t = Math.min(1, Math.max(0, (d - 230) / 260)); return t * t * (3 - 2 * t); };
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
@@ -159,6 +161,8 @@ export function layout() {
       else { types = []; let used = 0;
         for (let k = 0; k < 6; k++) { const t = BIG.length && chance(0.3 * f) ? pick(BIG) : pick(TYPES), w = FOOT[t].l + FOOT[t].r + 2;
           if (used + w > b.w - 6) { if (types.length) break; continue; } types.push(t); used += w; if (chance(0.25 * f) && types.length >= 1 && used > b.w * 0.55) break; } }   // sometimes stop early: a garden
+      // sprinkle gardens: some slots become a flower or pond garden (a bit more often away from the centre)
+      for (let k = 0; k < types.length; k++) if (!BIG_FOOT[types[k]] && chance(0.07 + 0.1 * f)) types[k] = pick(GARDENS);
       const widths = types.map((t) => FOOT[t].l + FOOT[t].r + 2), n = types.length;
       const slack = Math.max(0, b.w - 6 - widths.reduce((a, w) => a + w, 0)), wts = [...Array(n + 1)].map(() => 1 - f + f * rnd(0.05, 1.95)), sw = wts.reduce((a, w) => a + w, 0);
       let cursor = b.x + 3 + slack * wts[0] / sw, prevEnd = b.x;
@@ -171,8 +175,9 @@ export function layout() {
         const zFront0 = south ? b.z + b.d - front : b.z + front;   // centre with zero setback
         const maxDz = Math.max(0, Math.min(12, south ? (zFront0 - F.back) - backLimit : backLimit - (zFront0 + F.back)));
         const dz = Math.round(rnd(0, maxDz) * f), z = south ? zFront0 - dz : zFront0 + dz, rr = south ? r + 1 : r;
-        put(type, x, z, south ? 0 : 2, houseVariant(type));
         rects.push({ south, x0, x1, z0: south ? z - F.back : z - 13, z1: south ? z + 13 : z + F.back });
+        if (GARDENS.includes(type)) { put(type, x, z, south ? 0 : 2, houseVariant(type)); prevEnd = cursor + widths[i]; cursor = prevEnd + slack * wts[i + 1] / sw; continue; }   // a garden: no door
+        put(type, x, z, south ? 0 : 2, houseVariant(type));
         (stripDoors[rr + ":" + c] ??= []).push(x);
         houses.push({ type, x, z, south, c, r, doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 7 : z - 7, roofY: F.roofY ?? (type === "home2" || type === "inn" ? 29 : type === "manor" ? 17 : 23) });
         // a wide gap before this house becomes a little garden at the street front
@@ -181,6 +186,10 @@ export function layout() {
       }
       if (b.x + b.w - prevEnd > 14 && f > 0.3) for (let gx = prevEnd + 6; gx < b.x + b.w - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
     }
+    // now and then a giant landmark tree in the back-yard strip between the two rows (trunk clear of every building)
+    if (chance(0.24)) for (let tries = 0; tries < 8; tries++) { const tx = b.x + rnd(16, b.w - 16), tz = b.z + b.d / 2 + rnd(-5, 5);
+      if (rects.some((q) => tx > q.x0 - 5 && tx < q.x1 + 5 && tz > q.z0 - 5 && tz < q.z1 + 5) || giants.some((g) => Math.hypot(g.x - tx, g.z - tz) < 80)) continue;
+      giants.push({ x: tx, z: tz }); put(pick(GIANT_TREES), tx, tz, rndi(0, 3)); ob(tx, tz, 4); break; }
     // back-yard trees in the middle of the block, wherever no house reaches
     for (let i = 0; i < 4; i++) { const tx = b.x + rnd(8, b.w - 8), tz = b.z + b.d / 2 + rnd(-4, 4); if (!rects.some((q) => tx > q.x0 - 3 && tx < q.x1 + 3 && tz > q.z0 - 3 && tz < q.z1 + 3)) tree(tx, tz); }
     { const px = b.x + rnd(14, b.w - 14), pz = b.z + b.d / 2; if (chance(0.5) && !rects.some((q) => px > q.x0 - 5 && px < q.x1 + 5 && pz > q.z0 - 5 && pz < q.z1 + 5)) put(pick(["well", "haystack", "crates", "jars"]), px, pz, rndi(0, 3)); }
@@ -254,6 +263,7 @@ export function layout() {
   // countryside: hamlets of farmhouses facing a little square, crop fields, forests, scattered trees, mill + docks
   for (const H of HAMLETS) {
     for (const [dx, dz, rot] of [[-34, -26, 0], [26, -30, 0], [-30, 30, 2], [32, 28, 2]]) put(chance(0.7) ? "home1" : "home2", H.x + dx, H.z + dz, rot, houseVariant("home"));
+    if (chance(0.7)) { const a = rnd(0, 6.28); put(pick(GIANT_TREES), H.x + Math.cos(a) * 100, H.z + Math.sin(a) * 100, rndi(0, 3)); }   // a village landmark tree
     put("well", H.x, H.z, 0); ob(H.x, H.z, 5); put("haystack", H.x + 52, H.z - 6, 0); put("haystack", H.x - 54, H.z + 4, 1); put("crates", H.x + 10, H.z + 12, 0);
     for (let i = 0; i < 6; i++) { const a = rnd(0, 6.28); tree(H.x + Math.cos(a) * rnd(64, 80), H.z + Math.sin(a) * rnd(64, 80), ["tree_fruit", "tree_round", "bamboo"]); }
   }
