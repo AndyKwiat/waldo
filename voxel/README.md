@@ -85,7 +85,11 @@ push into `lights` in `buildNight()`.
   past if they're slower), veers right around oncoming or standing people, and briefly waits only when right on
   someone's heels. Collision circles (2.4 for adults) are the hard backstop. Routes are built on centre lines and shifted
   into a per-walker **keep-right lane** (`keepRight` in `sim.js`; narrow in alleys and doorways, sub-lanes through the
-  gates), so opposite flows don't meet head-on. Single doors that many people use (city gate, palace gatehouse, pagoda)
+  gates), so opposite flows don't meet head-on. **Congestion-aware routing:** every second the sim counts slowed walkers on each street segment and junction (smoothed);
+  each new route is a Dijkstra over the street graph where a segment costs its length + 26 per slowed walker on it and on
+  the junctions it passes (±7% noise so a crowd doesn't all take the same detour). Jammed destinations are avoided too:
+  a busy errand street makes people likelier to pick another errand, and market shoppers enter from whichever of the
+  plaza's four streets is nearest their stall. Single doors that many people use (city gate, palace gatehouse, pagoda)
   are kept clear by longer stays inside and spread-out start times — check them with the jam metric (slow walkers with
   ≥5 others within 6) rather than average speed alone. Health check numbers worth keeping:
   close pairs (<3.2 apart) in the single digits, average walking speed ≳ 50%, no NaN positions.

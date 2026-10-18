@@ -1,7 +1,7 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
+import { STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 // ---- navigation graph from the world's street network: pedestrians use streets + alleys, vehicles streets only
@@ -21,6 +21,39 @@ const elen = (a, b, e) => (e.pts ? e.pts.reduce((s, p, i, arr) => s + (i ? Math.
 const [DIST, NEXT] = floyd(EDGES.map(([a, b], i) => [a, b, elen(a, b, EDGE_LIST[i])]));
 const [VDIST, VNEXT] = floyd(EDGES.filter((_, i) => EDGE_LIST[i].type === "street").map(([a, b]) => [a, b, elen(a, b, {})]));
 const PED_NODES = [...new Set(EDGES.flat())];
+
+// ---- congestion-aware routing: every walker's route is a fresh Dijkstra over the 81-node street graph where each
+// edge costs its length + a penalty per slowed walker currently on it (and on the junctions it passes), smoothed over a
+// few seconds, plus a little per-route noise so a crowd doesn't all switch to the same detour at once.
+const ADJ = [...Array(NN)].map(() => []);   // [neighbour, length, edge index]
+EDGES.forEach(([a, b], i) => { const len = elen(a, b, EDGE_LIST[i]); ADJ[a].push([b, len, i]); ADJ[b].push([a, len, i]); });
+export const CONG = { edge: new Float32Array(EDGES.length), node: new Float32Array(NN), edgeNow: new Float32Array(EDGES.length), nodeNow: new Float32Array(NN), samples: 0 };
+const PER_SLOW = 26, NOISE = 0.15;   // route cost of one slowed walker ≈ 9 units of extra walking
+function route(from, to) {
+  const dist = new Float64Array(NN).fill(1e9), prev = new Int16Array(NN).fill(-1), done = new Uint8Array(NN);
+  dist[from] = 0;
+  for (;;) {
+    let u = -1, best = 1e9; for (let i = 0; i < NN; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+    if (u < 0 || u === to) break; done[u] = 1;
+    for (const [v, len, ei] of ADJ[u]) {
+      const c = len * (1 + (rand() - 0.5) * NOISE) + PER_SLOW * (CONG.edge[ei] + CONG.node[v]);
+      if (best + c < dist[v]) { dist[v] = best + c; prev[v] = u; }
+    }
+  }
+  return { dist, prev };
+}
+/** Which street element is (x, z) on? → {node} at a junction, {edge} along a street segment, or null. */
+function streetElement(x, z) {
+  const H = STREET / 2 + 2; let c = 0, r = 0;
+  for (let i = 1; i < SX.length; i++) if (Math.abs(SX[i] - x) < Math.abs(SX[c] - x)) c = i;
+  for (let i = 1; i < SZ.length; i++) if (Math.abs(SZ[i] - z) < Math.abs(SZ[r] - z)) r = i;
+  const inV = Math.abs(x - SX[c]) < H, inH = Math.abs(z - SZ[r]) < H;
+  if (inV && inH) return { node: nid(c, r) };
+  if (inH) { const c0 = x < SX[c] ? c - 1 : c; const ei = EDGE_IDX.get(nid(c0, r) + ":" + nid(c0 + 1, r)); return ei === undefined ? null : { edge: ei }; }
+  if (inV) { const r0 = z < SZ[r] ? r - 1 : r; const ei = EDGE_IDX.get(nid(c, r0) + ":" + nid(c, r0 + 1)); return ei === undefined ? null : { edge: ei }; }
+  return null;
+}
+const EDGE_IDX = new Map(); EDGES.forEach(([a, b], i) => { EDGE_IDX.set(a + ":" + b, i); EDGE_IDX.set(b + ":" + a, i); });
 const GATE_NODE = nid(AV_C, ROWS);
 const VEH_NODES = PED_NODES.filter((n) => n !== GATE_NODE && VDIST[GATE_NODE][n] < 1e9);   // vehicles stay on the street network reachable from the gate
 const SEDGES = EDGES.filter(([a, b], i) => EDGE_LIST[i].type === "street" && VEH_NODES.includes(a) && VEH_NODES.includes(b));
@@ -65,9 +98,12 @@ function buildPath(e, from, to) {
   if (from && from.approach.length) { net.push(A1); lanes.push(a1.alley ? AL : SL); }
   const same = a1.nodes.length === a2.nodes.length && a1.nodes.every((n) => a2.nodes.includes(n));
   if (!same) { let best = 1e9, b1 = a1.nodes[0], b2 = a2.nodes[0];
-    for (const n1 of a1.nodes) for (const n2 of a2.nodes) { const c = hyp(A1, NODES[n1]) + DIST[n1][n2] + hyp(NODES[n2], A2); if (c < best) { best = c; b1 = n1; b2 = n2; } }
-    let n = b1; net.push(nodePt(CENTER_LINE, n)); lanes.push(SL); let guard = 0;
-    while (n !== b2 && guard++ < 90) { const m = NEXT[n][b2]; if (m < 0) break; for (const q of edgePts(CENTER_LINE, n, m)) { net.push(q); lanes.push(AL); } n = m; net.push(nodePt(CENTER_LINE, n)); lanes.push(SL); } }
+    let bestR = null;
+    for (const n1 of a1.nodes) { const R = route(n1, -1); for (const n2 of a2.nodes) { const c = hyp(A1, NODES[n1]) + R.dist[n2] + hyp(NODES[n2], A2); if (c < best) { best = c; b1 = n1; b2 = n2; bestR = R; } } }
+    const chain = [b2]; for (let n = b2, g = 0; n !== b1 && g++ < 90;) { n = bestR.prev[n]; if (n < 0) break; chain.push(n); } chain.reverse();
+    if (chain[0] !== b1) { chain.length = 0; for (let n = b1, g = 0; g++ < 90; n = NEXT[n][b2]) { chain.push(n); if (n === b2 || NEXT[n][b2] < 0) break; } }   // fallback: static shortest path
+    net.push(nodePt(CENTER_LINE, chain[0])); lanes.push(SL);
+    for (let k = 1; k < chain.length; k++) { for (const q of edgePts(CENTER_LINE, chain[k - 1], chain[k])) { net.push(q); lanes.push(AL); } net.push(nodePt(CENTER_LINE, chain[k])); lanes.push(SL); } }
   net.push(A2); lanes.push(a2.alley ? AL : SL);
   for (const p of to.approach) { pts.push(p); lanes.push(doorLane(to)); }
   const out = keepRight(pts, lanes).slice(); pts.length = 0; pts.push(...out);
@@ -100,7 +136,11 @@ export function createSim(W) {
   const STALLS = [];
   // shoppers enter the market from the side street level with their stall (spreads traffic along the plaza edges)
   for (const s of W.stalls) for (const ox of [-6, 0, 6]) { const p = { x: s.x + ox, z: s.z + s.front * 9 }, c = p.x < CENTER.x ? AV_C - 1 : AV_C + 1;
-    STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: segAnchor(SX[c], p.z, nid(c, PLAZA_R), nid(c, PLAZA_R + 1)), approach: [p], hide: false }); }
+    // enter from the nearest of the plaza's four surrounding streets (not just the two side streets)
+    const zN = SZ[PLAZA_R], zS = SZ[PLAZA_R + 1], xW = SX[AV_C - 1], xE = SX[AV_C + 1], cx = p.x < GATE_X ? AV_C - 1 : AV_C;
+    const opts = [[Math.abs(p.x - xW), () => segAnchor(xW, p.z, nid(AV_C - 1, PLAZA_R), nid(AV_C - 1, PLAZA_R + 1))], [Math.abs(p.x - xE), () => segAnchor(xE, p.z, nid(AV_C + 1, PLAZA_R), nid(AV_C + 1, PLAZA_R + 1))],
+      [Math.abs(p.z - zN), () => segAnchor(p.x, zN, nid(cx, PLAZA_R), nid(cx + 1, PLAZA_R))], [Math.abs(p.z - zS), () => segAnchor(p.x, zS, nid(cx, PLAZA_R + 1), nid(cx + 1, PLAZA_R + 1))]].sort((a, b) => a[0] - b[0]);
+    void c; STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: opts[0][1](), approach: [p], hide: false }); }
   const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[W.pagoda.r], nid(W.pagoda.c, W.pagoda.r), nid(W.pagoda.c + 1, W.pagoda.r)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true, lane: 2.6 };
   const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 2)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true, lane: 3.8 };   // the gatehouse passage is ~12 wide
   const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = 0;
@@ -143,7 +183,11 @@ export function createSim(W) {
     if (q < 0.78) return [PAGODA, "going to pray at the pagoda"];
     return [randomStroll(), "out for a stroll"];
   }
-  const goNext = (e) => { const [pl, txt] = chooseNext(e); e.dest = pl; e.activity = txt; e.path = buildPath(e, e.place, pl); e.pi = 0; };
+  /** Smoothed count of slowed walkers on a destination's street segment (its anchor). */
+  const destCong = (pl) => { const n = pl?.anchor?.nodes; if (!n) return 0; if (n.length === 1) return CONG.node[n[0]]; const ei = EDGE_IDX.get(n[0] + ":" + n[1]); return ei === undefined ? 0 : CONG.edge[ei]; };
+  const goNext = (e) => { let [pl, txt] = chooseNext(e);
+    // a jammed destination street makes people more likely to pick another errand (homes and fixed duties excepted)
+    for (let k = 0; k < 2 && pl !== e.home && pl?.kind !== "farm" && chance(Math.min(0.85, destCong(pl) / 6)); k++) [pl, txt] = chooseNext(e); e.dest = pl; e.activity = txt; e.path = buildPath(e, e.place, pl); e.pi = 0; };
   const arrive = (e) => { const pl = e.dest; e.place = pl; e.path = null; if (pl.hide) { e.hidden = true; e.timer = stayTime(e, pl); e.activity = insideText(e, pl); } else { e.pause = stayTime(e, pl); e.activity = stayText(e, pl); } };
   function initCitizen(e) {
     if (e.role === "farmer" && chance(0.5)) { const f = pick(FARMS); e.place = e.dest = f; at(e, f.x, f.z); e.pause = rnd(1, 120); e.activity = "working the rice paddies"; return; }   // spread over a whole shift: no rush hour at the gate
@@ -301,11 +345,20 @@ export function createSim(W) {
   const crossesStatue = (ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((STATUE.x - ax) * dx + (STATUE.z - az) * dz) / L)); return Math.hypot(ax + dx * t - STATUE.x, az + dz * t - STATUE.z) < 31; };
   const anyoneNear = (x, z, r) => { const gx = Math.floor(x / CELL), gz = Math.floor(z / CELL); for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) { const cell = grid.get((gx + ox) * 4096 + gz + oz); if (cell) for (const j of cell) { const e = ents[j]; if (e.kind !== "cat" && Math.hypot(e.x - x, e.z - z) < r) return true; } } return false; };
 
-  let T = 0;
+  let T = 0, congT = 0;
   function step(dt) {
     T += dt;
     for (const e of ents) { e.ox = e.x; e.oz = e.z; e.mv = false; BRAINS[e.brain](e, dt); }
     collide();
+    // congestion sampling (every step) → smoothed per-edge / per-junction slowed-walker counts once a second
+    for (const e of ents) { if (e.hidden || !e.path || e.kind !== "person" || e.brain !== "citizen") continue;
+      if (!(e.waiting || (e.spd ?? e.speed) < e.speed * 0.35)) continue; const el = streetElement(e.x, e.z); if (!el) continue;
+      if (el.node !== undefined) CONG.nodeNow[el.node]++; else CONG.edgeNow[el.edge]++; }
+    CONG.samples++; congT += dt;
+    if (congT >= 1) { const k = 1 / CONG.samples;
+      for (let i = 0; i < CONG.edge.length; i++) { CONG.edge[i] = CONG.edge[i] * 0.6 + CONG.edgeNow[i] * k * 0.4; CONG.edgeNow[i] = 0; }
+      for (let i = 0; i < NN; i++) { CONG.node[i] = CONG.node[i] * 0.6 + CONG.nodeNow[i] * k * 0.4; CONG.nodeNow[i] = 0; }
+      CONG.samples = 0; congT = 0; }
     for (const e of ents) {
       if (e.mv && e.path && !e.waiting) { if (Math.hypot(e.x - e.ox, e.z - e.oz) < (e.spd ?? e.speed) * dt * 0.3) { e.stuck += dt; if (e.stuck > 2.5) { e.stuck = 0; e.pi++; } } else e.stuck = Math.max(0, e.stuck - dt); }
       if (e.mv && e.face !== undefined) { let d = e.face - e.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); e.yaw += d * Math.min(1, dt * 10); }
