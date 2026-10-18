@@ -142,7 +142,7 @@ export function createSim(W) {
       [Math.abs(p.z - zN), () => segAnchor(p.x, zN, nid(cx, PLAZA_R), nid(cx + 1, PLAZA_R))], [Math.abs(p.z - zS), () => segAnchor(p.x, zS, nid(cx, PLAZA_R + 1), nid(cx + 1, PLAZA_R + 1))]].sort((a, b) => a[0] - b[0]);
     void c; STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: opts[0][1](), approach: [p], hide: false }); }
   const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[W.pagoda.r], nid(W.pagoda.c, W.pagoda.r), nid(W.pagoda.c + 1, W.pagoda.r)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true, lane: 2.6 };
-  const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 2)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true, lane: 3.8 };   // the gatehouse passage is ~12 wide
+  const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 3)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true, lane: 3.8 };   // the gatehouse passage is ~12 wide
   const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = 0;
     FARMS.push({ kind: "farm", x: fx, z: fz, anchor: nodeAnchor(GATE_NODE), approach: [{ x: GATE_X + j, z: CITY.z1 - 4 }, { x: GATE_X + j, z: CITY.z1 + 26 }, { x: GATE_X + j, z: Math.max(CITY.z1 + 34, fz) }, { x: fx, z: fz }], hide: false, lane: 3.2 }); }
     // farmers follow the south road to their own field's row before turning off (no single fan-out point), in keep-right

@@ -82,8 +82,10 @@ see them (`celestial()` in `night.js`).
   instead (no door). Landmark trees `tree_camphor` and `tree_ginkgo` (46–48 tall, above every house) stand in about a quarter
   of the back-yard strips (≥ 80 apart) and near most hamlets (`GARDENS` / `GIANT_TREES`). Footprints live in `FOOT` / `BIG_FOOT` in `world.js`; `teahouse`
   (three storeys, 20 wide) stands in garden strips. All share the house door convention (door at local x=0, front
-  edge ≈ +12, teahouse +10). The palace is `palace_hall` + `palace_wall`s + the `fort_gate` gatehouse, all re-coloured
-  to imperial gold.
+  edge ≈ +12, teahouse +10). The palace (blocks 3–4 × rows 0–2) is the 191-tall `palace_great_hall` on three marble terraces (`HALL` in
+  `world.js`), `palace_wall`s, the `fort_gate` gatehouse, side halls, gilded `lion_statue` pairs (hall stair, inside and
+  outside the gate), jade `dragon_statue` columns along the approach and bronze `incense_burner`s, all roofs re-coloured to
+  imperial gold. Optional models are skipped when missing from `models/manifest.json` (`setAvailableModels`).
 - **Statue:** a colossal marble Jupiter (thunderbolt raised, eagle at his foot) stands on a stepped pedestal in the middle of
   the market square, facing south down the avenue (`STATUE` in `world.js`: 104³ grid, ~95 tall, pedestal footprint
   47×41). It replaced the old plaza pavilion. The pedestal is a 3×3 grid of obstacle circles, `onStatue(x,z,m)` marks the

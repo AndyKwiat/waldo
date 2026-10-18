@@ -14,16 +14,16 @@ export const rnd = (a, b) => a + rand() * (b - a), rndi = (a, b) => Math.floor(r
 // main north–south avenue, the city ring and a few cross avenues stay a clean grid.
 export const STREET = 22, COLS = 8, ROWS = 8;
 const lr = (() => { let s = 777; return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }; })(); // fixed layout rng
-const AV_C = 4, PAL_C = [3, 4], PAL_R = [0, 1], PLAZA_R = 4, PAGODA_BLOCK = [1, 3];
+const AV_C = 4, PAL_C = [3, 4], PAL_R = [0, 1, 2], PLAZA_R = 4, PAGODA_BLOCK = [1, 3];
 export const COLW = [...Array(COLS)].map((_, c) => (PAL_C.includes(c) ? 122 : 96 + Math.round(lr() * 22)));
-export const ROWH = [...Array(ROWS)].map((_, r) => (PAL_R.includes(r) ? 86 : r === PLAZA_R ? 80 : 70 + Math.round(lr() * 14)));
+export const ROWH = [...Array(ROWS)].map((_, r) => { const v = PAL_R.includes(r) && r < 2 || r === PLAZA_R ? 0 : 70 + Math.round(lr() * 14); return r < 2 ? 86 : r === PLAZA_R ? 80 : r === 2 ? 84 : v; });   // rows 0–2 are the palace (row 2 still draws from lr so the rest of the layout stays put)
 export const X0 = 380, Z0 = 280;                       // city origin; everything outside is countryside
 export const CW = COLW.reduce((a, b) => a + b, 0) + (COLS + 1) * STREET, CD = ROWH.reduce((a, b) => a + b, 0) + (ROWS + 1) * STREET;
 export const WX = X0 * 2 + CW, WZ = Z0 + CD + 430;
 export const SX = [X0 + STREET / 2]; for (let c = 0; c < COLS; c++) SX.push(SX[c] + COLW[c] + STREET);
 export const SZ = [Z0 + STREET / 2]; for (let r = 0; r < ROWS; r++) SZ.push(SZ[r] + ROWH[r] + STREET);
 export const block = (c, r) => ({ x: SX[c] + STREET / 2, z: SZ[r] + STREET / 2, w: COLW[c], d: ROWH[r] });
-export const PALACE = { x: block(3, 0).x, z: block(3, 0).z, w: COLW[3] + STREET + COLW[4], d: ROWH[0] + STREET + ROWH[1] };
+export const PALACE = { x: block(3, 0).x, z: block(3, 0).z, w: COLW[3] + STREET + COLW[4], d: ROWH[0] + ROWH[1] + ROWH[2] + 2 * STREET };
 export const FORT = PALACE;
 export const PLAZA = { ...block(3, PLAZA_R), w: COLW[3] + STREET + COLW[4] };
 export const CENTER = { x: PLAZA.x + PLAZA.w / 2, z: PLAZA.z + PLAZA.d / 2 };
@@ -43,14 +43,16 @@ export const CITY = { x0: X0, z0: Z0, x1: X0 + CW, z1: Z0 + CD };
 export const CITY_R = { x: X0 - 30, z: Z0 - 30, w: CW + 60, d: CD + 60 };  // city incl. walls + towers
 export const GATE_X = SX[AV_C];
 // palace courtyard between the great hall and the gate (drill, archery, barracks)
-export const YARD = { x: PALACE.x + 18, z: PALACE.z + 104, w: PALACE.w - 36, d: 46 };
+export const YARD = { x: PALACE.x + 18, z: PALACE.z + PALACE.d - 100, w: PALACE.w - 36, d: 46 };
+// the great hall: model "palace_great_hall" (256 grid) centred at HALL; its bottom terrace's front edge is HALL.z + HALL.front
+export const HALL = { x: PALACE.x + PALACE.w / 2, z: PALACE.z + 96, front: 74 };
 
 // HSEG[r][c]: segment (c,r)–(c+1,r); VSEG[c][r]: segment (c,r)–(c,r+1)
 export const HSEG = [...Array(ROWS + 1)].map(() => Array(COLS).fill("street"));
 export const VSEG = [...Array(COLS + 1)].map(() => Array(ROWS).fill("street"));
-HSEG[1][3] = HSEG[1][4] = VSEG[4][0] = VSEG[4][1] = "none";   // inside the palace
+HSEG[1][3] = HSEG[1][4] = HSEG[2][3] = HSEG[2][4] = VSEG[4][0] = VSEG[4][1] = VSEG[4][2] = "none";   // inside the palace
 VSEG[4][PLAZA_R] = "none";                                     // the plaza's centre (the statue)
-const MAIN_ROWS = new Set([0, 2, PLAZA_R, PLAZA_R + 1, ROWS]), MAIN_COLS = new Set([0, AV_C, COLS]);
+const MAIN_ROWS = new Set([0, 3, PLAZA_R, PLAZA_R + 1, ROWS]), MAIN_COLS = new Set([0, AV_C, COLS]);
 const touchesSpecial = (cells) => cells.some(([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS && isSpecialBlock(c, r));
 for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "street" && !MAIN_ROWS.has(r) && !touchesSpecial([[c, r - 1], [c, r]]) && lr() < 0.38) HSEG[r][c] = "alley";
 for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (VSEG[c][r] === "street" && !MAIN_COLS.has(c) && !touchesSpecial([[c - 1, r], [c, r]]) && lr() < 0.32) VSEG[c][r] = "garden";
@@ -135,6 +137,10 @@ let STRIP_DOORS = {};
 /** Bigger building types mixed into the outer rows: footprint offsets from the model centre (see FOOT in layout) + roof height. */
 /** Garden plots that take a building slot (no door), and landmark trees taller than the houses. */
 export const GARDENS = ["garden_flower", "garden_pond"], GIANT_TREES = ["tree_camphor", "tree_ginkgo"];
+/** Optional palace models (built by a separate recipe pass); missing ones are skipped. */
+export const GREAT_HALL = "palace_great_hall";
+let MODELS_EXTRA = new Set();
+export function setAvailableModels(names) { MODELS_EXTRA = new Set(names); }
 export const BIG_FOOT = { hall_house: { l: 25, r: 25, back: 18, roofY: 36 }, compound: { l: 30, r: 30, back: 19, roofY: 21 } };
 export function layout() {
   placeBumps();
@@ -231,10 +237,21 @@ export function layout() {
   put("fort_gate", fort.x, fort.z, 0, { y: 0, ...gold }); fort.outZ = P.z + P.d + 3; fort.inZ = fort.z + 2;
   for (let x = P.x + 2; x < P.x + P.w - 12; x += 22) { put("palace_wall", x + 11, P.z + 2, 0, gold); if (Math.abs(x + 11 - GATE_X) > 62) put("palace_wall", x + 11, P.z + P.d - 3, 2, gold); }
   for (let z = P.z + 2; z < P.z + P.d - 12; z += 22) { put("palace_wall", P.x + 2, z + 11, 1, gold); put("palace_wall", P.x + P.w - 3, z + 11, 3, gold); }
-  put("palace_hall", P.x + P.w / 2, P.z + 50, 0, gold);
+  // the great hall on its marble terraces at the back, a long ceremonial approach lined with dragon columns, guardian
+  // lions at the gate and at the foot of the hall's stair, bronze incense burners, side halls, the drill yard by the gate
+  if (MODELS_EXTRA.has(GREAT_HALL)) put(GREAT_HALL, HALL.x, HALL.z, 0, gold); else put("palace_hall", HALL.x, HALL.z - 20, 0, gold);
+  const hb = HALL.z + HALL.front;   // foot of the terraces
+  for (let k = 0; k < 9; k++) ob(HALL.x - 80 + k * 20, HALL.z, 26);
   const sideHall = { remap: variantRemap({ roof: "#e8b830", wall: "#e8d0b8", pillar: "#c02a20" }), remapKey: "|palace" };
-  for (const z of [P.z + 34, P.z + 74]) { put("home2", P.x + 26, z, 1, sideHall); put("home2", P.x + P.w - 26, z, 3, sideHall); }
-  for (const [x, z] of [[P.x + 14, P.z + 14], [P.x + P.w - 14, P.z + 14], [P.x + 14, P.z + 100], [P.x + P.w - 14, P.z + 100]]) tree(x, z, ["tree_pine"]);
+  for (const z of [hb + 26, hb + 66]) { put("home2", P.x + 22, z, 1, sideHall); put("home2", P.x + P.w - 22, z, 3, sideHall); }
+  for (const [x, z] of [[P.x + 14, P.z + 14], [P.x + P.w - 14, P.z + 14], [P.x + 14, P.z + 150], [P.x + P.w - 14, P.z + 150], [P.x + 16, hb + 100], [P.x + P.w - 16, hb + 100]]) tree(x, z, ["tree_pine"]);
+  if (MODELS_EXTRA.has("tree_ginkgo")) for (const dx of [-108, 108]) put("tree_ginkgo", HALL.x + dx, HALL.z + 40, 0);
+  const statue = (m, x, z, rot, r) => { if (!MODELS_EXTRA.has(m)) return; put(m, x, z, rot, { y: 0 }); ob(x, z, r); };
+  // lions: a pair at the hall stair, a pair just inside the gate, a pair outside it facing the city
+  for (const sx of [-1, 1]) { statue("lion_statue", HALL.x + sx * 24, hb + 10, 0, 7); statue("lion_statue", GATE_X + sx * 22, P.z + P.d - 44, 0, 7); statue("lion_statue", GATE_X + sx * 22, P.z + P.d + 8, 0, 7); }
+  // dragon columns flanking the approach, incense burners on the axis
+  for (let z = hb + 24; z < YARD.z - 6; z += 30) for (const sx of [-1, 1]) statue("dragon_statue", HALL.x + sx * 30, z, 0, 6);
+  for (const z of [hb + 18, hb + 50]) statue("incense_burner", HALL.x, z, 0, 5);
   for (let z = YARD.z + 4; z < P.z + P.d - 36; z += 14) for (const dx of [-14, 14]) { put("lantern_post", GATE_X + dx, z); ob(GATE_X + dx, z, 2); }
   for (let i = 0; i < 4; i++) put("target", YARD.x + YARD.w - 12, YARD.z + 8 + i * 9, 3);
   put("haystack", YARD.x + 8, YARD.z + 6, 0); put("crates", YARD.x + 24, YARD.z + 4, 1); put("jars", YARD.x + YARD.w - 40, YARD.z + 4, 0);
@@ -351,8 +368,9 @@ export function groundTexture() {
   for (const [r, col] of [[31, "#d0503a"], [38, "#c2ac80"], [46, "#d0503a"]]) for (let a = 0; a < Math.PI * 2; a += 0.6 / r) F(CENTER.x + Math.cos(a) * r, CENTER.z + Math.sin(a) * r, 1.5, 1.5, col);
   F(PALACE.x, PALACE.z, PALACE.w, PALACE.d, "#a89a86");
   for (let z = PALACE.z; z < PALACE.z + PALACE.d; z += 5) for (let x = PALACE.x + ((z / 5) % 2 ? 5 : 0); x < PALACE.x + PALACE.w; x += 10) F(x, z, 9, 4, pick(["#d8ccb8", "#d8ccb8", "#cfc2ac", "#e4dac8"]));
-  F(GATE_X - 9, PALACE.z + 90, 18, PALACE.d - 90, "#f0ece4"); for (let z = PALACE.z + 90; z < PALACE.z + PALACE.d; z += 6) F(GATE_X - 9, z, 18, 1, "#d8d0c0");
-  for (const [x0, x1] of [[PALACE.x + 4, PALACE.x + 48], [PALACE.x + PALACE.w - 48, PALACE.x + PALACE.w - 4]]) { F(x0, PALACE.z + 8, x1 - x0, 92, "#6cc04c"); for (let i = 0; i < 160; i++) F(rnd(x0, x1), PALACE.z + rnd(8, 100), 1, 1, pick(GR.concat(["#ffffff", "#ffe050"]))); }
+  const hb = HALL.z + HALL.front;   // white marble processional way from the hall to the gate, with a darker border
+  F(GATE_X - 13, hb - 4, 26, PALACE.d - (hb - PALACE.z) + 4, "#c8bca8"); F(GATE_X - 11, hb - 4, 22, PALACE.d - (hb - PALACE.z) + 4, "#f0ece4"); for (let z = hb; z < PALACE.z + PALACE.d; z += 6) F(GATE_X - 11, z, 22, 1, "#d8d0c0");
+  for (const [x0, x1] of [[PALACE.x + 4, PALACE.x + 30], [PALACE.x + PALACE.w - 30, PALACE.x + PALACE.w - 4]]) { F(x0, PALACE.z + 8, x1 - x0, 170, "#6cc04c"); for (let i = 0; i < 200; i++) F(rnd(x0, x1), PALACE.z + rnd(8, 178), 1, 1, pick(GR.concat(["#ffffff", "#ffe050"]))); }
   const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }

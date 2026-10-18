@@ -105,7 +105,7 @@ const VIEWS = {
   plaza: () => [[W.CENTER.x + 40, 70, W.CENTER.z + 110], [W.CENTER.x, 0, W.CENTER.z]],
   street: () => [[W.SX[0] + 6, 18, W.SZ[3] + 4], [W.SX[2] + 20, 4, W.SZ[3] - 2]],
   gate: () => [[W.GATE_X + 35, 42, W.WALL_S + 105], [W.GATE_X, 10, W.WALL_S + 4]],
-  palace: () => [[W.GATE_X + 190, 210, W.PALACE.z + W.PALACE.d + 210], [W.GATE_X, 10, W.PALACE.z + W.PALACE.d / 2]],
+  palace: () => [[W.GATE_X + 250, 230, W.PALACE.z + W.PALACE.d + 300], [W.GATE_X, 60, W.PALACE.z + W.PALACE.d / 2 - 20]],
   fort: () => VIEWS.palace(),
   district: () => [[W.SX[1] - 40, 210, W.SZ[7] + 170], [W.SX[2] + 30, 0, W.SZ[5] + 20]],
   yard: () => [[W.GATE_X + 70, 60, W.YARD.z + W.YARD.d + 70], [W.GATE_X, 8, W.YARD.z + 10]],
@@ -145,6 +145,7 @@ walkMat.onBeforeCompile = (sh) => {
     .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tif ( wZ ) { vec2 wd = vec2( transformed.x - aPart.z, transformed.y - aPart.y ); transformed.x = aPart.z + wd.x * wc - wd.y * ws; transformed.y = aPart.y + wd.x * ws + wd.y * wc; }\n\telse { vec2 wd = vec2( transformed.y - aPart.y, transformed.z - aPart.z ); transformed.y = aPart.y + wd.x * wc - wd.y * ws; transformed.z = aPart.z + wd.x * ws + wd.y * wc; }");
 };
 walkMat.customProgramCacheKey = () => "walk";
+try { W.setAvailableModels(Object.keys(await (await fetch("models/manifest.json", { cache: "no-store" })).json())); } catch {}   // optional palace models
 const L = W.layout();
 const tex = W.groundTexture();
 // Flat ground layers are only centimetres apart, far below depth-buffer precision at city distances, so each

@@ -3,6 +3,7 @@
 // models/sheets/<name>.png, then reference it from src/world.js.
 import { house, pagoda, cityGate, fortGate, wallSegment, watchtower, stall, pavilion, teahouse, manor, palaceHall, palaceWall, hallHouse, compound } from "./buildings.js";
 import { treeCamphor, treeGinkgo, gardenFlower, gardenPond } from "./landmarks.js";
+import { palaceGreatHall, lionStatue, dragonStatue, incenseBurner } from "./palace.js";
 import { tree, lanternPost, well, haystack, jars, crateStack, target, rickshaw, oxcart, sedan, barrow, boat, waterwheel } from "./props.js";
 
 export const RECIPES = {
@@ -13,4 +14,5 @@ export const RECIPES = {
   tree_camphor: treeCamphor, tree_ginkgo: treeGinkgo, garden_flower: gardenFlower, garden_pond: gardenPond,
   lantern_post: lanternPost, well, haystack, jars, crates: crateStack, target,
   rickshaw, oxcart, sedan, barrow, boat, waterwheel,
+  palace_great_hall: palaceGreatHall, lion_statue: lionStatue, dragon_statue: dragonStatue, incense_burner: incenseBurner,
 };
