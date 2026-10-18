@@ -139,8 +139,10 @@ const vmat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const walkMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 walkMat.onBeforeCompile = (sh) => {
   sh.vertexShader = "attribute vec3 aPart;\nattribute vec2 aWalk;\n" + sh.vertexShader
-    .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\n\tfloat wAng = aPart.x == 0.0 ? 0.0 : sign( aPart.x ) * ( abs( aPart.x ) > 1.5 ? 0.7 : 1.0 ) * sin( aWalk.x ) * aWalk.y;\n\tfloat wc = cos( wAng ), ws = sin( wAng );\n\tobjectNormal = vec3( objectNormal.x, objectNormal.y * wc - objectNormal.z * ws, objectNormal.y * ws + objectNormal.z * wc );")
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\n\t{ vec2 wd = vec2( transformed.y - aPart.y, transformed.z - aPart.z ); transformed.y = aPart.y + wd.x * wc - wd.y * ws; transformed.z = aPart.z + wd.x * ws + wd.y * wc; }");
+    // |k| 1 = leg, 2 = arm (0.7×): swing about x (models facing +z); |k| 3 = leg of a model facing +x (vehicles): swing about z,
+    // and the pivot's third component is x instead of z.
+    .replace("#include <beginnormal_vertex>", "#include <beginnormal_vertex>\n\tfloat wK = abs( aPart.x ); bool wZ = wK > 2.5;\n\tfloat wAng = aPart.x == 0.0 ? 0.0 : sign( aPart.x ) * ( wK > 1.5 && wK < 2.5 ? 0.7 : 1.0 ) * sin( aWalk.x ) * aWalk.y;\n\tfloat wc = cos( wAng ), ws = sin( wAng );\n\tobjectNormal = wZ ? vec3( objectNormal.x * wc - objectNormal.y * ws, objectNormal.x * ws + objectNormal.y * wc, objectNormal.z ) : vec3( objectNormal.x, objectNormal.y * wc - objectNormal.z * ws, objectNormal.y * ws + objectNormal.z * wc );")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tif ( wZ ) { vec2 wd = vec2( transformed.x - aPart.z, transformed.y - aPart.y ); transformed.x = aPart.z + wd.x * wc - wd.y * ws; transformed.y = aPart.y + wd.x * ws + wd.y * wc; }\n\telse { vec2 wd = vec2( transformed.y - aPart.y, transformed.z - aPart.z ); transformed.y = aPart.y + wd.x * wc - wd.y * ws; transformed.z = aPart.z + wd.x * ws + wd.y * wc; }");
 };
 walkMat.customProgramCacheKey = () => "walk";
 const L = W.layout();
@@ -185,8 +187,10 @@ const riverGlints = [];
 }
 
 const geoCache = new Map();
+// Models with walking parts: the ox pulling the ox cart (legs at x 20/26, z 11/16, y 0–4 in the 32-grid; faces +x → k ±3).
+const MODEL_PARTS = { oxcart: (x, y, z) => { if (y > 4 || !((x === 20 || x === 26) && (z === 11 || z === 16))) return null; return [(x === 20) === (z === 11) ? 3 : -3, 5, x + 0.5 - 16]; } };
 async function modelGeometry(model, remap, key) {
-  if (!geoCache.has(key)) geoCache.set(key, loadModel(model).then((g) => meshVoxels(g, { remap: remap ?? {}, pivot: model === "waterwheel" ? "center" : "base" })));
+  if (!geoCache.has(key)) geoCache.set(key, loadModel(model).then((g) => meshVoxels(g, { remap: remap ?? {}, pivot: model === "waterwheel" ? "center" : "base", parts: MODEL_PARTS[model] })));
   return geoCache.get(key);
 }
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
@@ -240,7 +244,7 @@ async function buildActors() {
   const groups = new Map(); for (const it of all) { const k = lookKey(it.a.look); (groups.get(k) ?? groups.set(k, []).get(k)).push(it); }
   await Promise.all([...groups].map(async ([k, list]) => {
     const look = list[0].a.look;
-    const parts = look.model ? null : look.animal ? animalParts(look.animal) : personParts(look);
+    const parts = look.model ? MODEL_PARTS[look.model] ?? null : look.animal ? animalParts(look.animal) : personParts(look);
     const geo = look.model ? await modelGeometry(look.model, null, "m:" + look.model) : meshVoxels(look.animal ? animalGrid(look) : gridFromVoxels(personVoxels(look), 16), { pivot: "base", parts: parts ?? undefined });
     let walk = null;
     if (parts) { walk = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 2), 2); walk.setUsage(THREE.DynamicDrawUsage); geo.setAttribute("aWalk", walk); }
@@ -368,7 +372,7 @@ function updateActors(dt) {
     place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
     const wk = e._mesh.userData.walk;
     if (wk) { // legs pass on landing, spread at the top of each hop; eases in/out as they start and stop walking
-      const target = e.mv ? (e.kind === "person" ? 0.4 : 0.55) * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;
+      const target = e.mv ? (e.kind === "person" ? 0.4 : e.kind === "vehicle" ? 0.38 : e.kind === "cow" ? 0.35 : 0.55) * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;
       e.walkAmp = (e.walkAmp ?? 0) + (target - (e.walkAmp ?? 0)) * Math.min(1, dt * 8);
       wk.array[e._slot * 2] = e.hp; wk.array[e._slot * 2 + 1] = e.walkAmp;
     }

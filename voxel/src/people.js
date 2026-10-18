@@ -85,11 +85,13 @@ export function personParts(p) {
     return null;
   };
 }
-/** Four legs for dogs and cats (diagonal trot: front-left with back-right); hip at y 2. */
+/** Four legs for dogs, cats and cows (diagonal trot: front-left with back-right); hip at y 2. */
 export function animalParts(kind) {
-  const legs = kind === "dog" ? [[7, 5, 1], [9, 5, -1], [7, 10, -1], [9, 10, 1]] : kind === "cat" ? [[8, 6, 1], [9, 6, -1], [8, 10, -1], [9, 10, 1]] : null;
+  const legs = kind === "dog" ? [[7, 5, 1], [9, 5, -1], [7, 10, -1], [9, 10, 1]] : kind === "cat" ? [[8, 6, 1], [9, 6, -1], [8, 10, -1], [9, 10, 1]]
+    : kind === "cow" ? [[6, 3, 1], [10, 3, -1], [6, 11, -1], [10, 11, 1]] : null;
   if (!legs) return null;
-  return (x, y, z) => { if (y > 1) return null; for (const [lx, lz, k] of legs) if (x === lx && z === lz) return [k, 2, lz + 0.5 - 8]; return null; };
+  const top = kind === "cow" ? 3 : 1;   // leg cells y 0..top, hinged just above
+  return (x, y, z) => { if (y > top) return null; for (const [lx, lz, k] of legs) if (x === lx && z === lz) return [k, top + 1, lz + 0.5 - 8]; return null; };
 }
 
 // ---- animals (front +Z)

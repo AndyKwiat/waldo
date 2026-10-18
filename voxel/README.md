@@ -99,7 +99,7 @@ push into `lights` in `buildNight()`.
   ~+12 in local z, which `world.js` uses for `outZ`/`inZ`.
 - **Variants:** recipes paint with canonical `ROOF`/`WALL`/`PILLAR`/`CLOTH` ramps; `rampRemap` swaps a
   whole ramp for another base color at mesh time, so one model yields many looks.
-- **Walk animation:** people, dogs and cats keep their hop, and their limbs swing with it. `meshVoxels(…, {parts})`
+- **Walk animation:** people, dogs, cats, cows and the ox-cart oxen (`MODEL_PARTS` in `main.js`; vehicles face +x, so their legs swing about z) keep their hop, and their limbs swing with it. `meshVoxels(…, {parts})`
   tags each voxel's limb (`personParts` / `animalParts` in `people.js`: legs hinge at the hip, arms at the shoulder,
   diagonal trot for four legs) into an `aPart` vertex attribute and keeps faces between limbs; `walkMat`'s vertex shader
   rotates limbs by `sin(phase) × amp` from a per-instance `aWalk` (phase = the hop phase, so legs pass on landing; amp
