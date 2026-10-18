@@ -17,11 +17,16 @@ const qs = new URLSearchParams(location.search);
 if (qs.get("seed")) W.setSeed(+qs.get("seed"));
 const LOW = qs.has("low");           // cheaper rendering for headless screenshots
 
-// Distance darkening: before the usual sky-coloured haze, every fogged material dims slightly (and cools a touch)
-// with distance from the camera, so the foreground pops and far districts recede. Patched into three's fog chunk,
-// so it costs nothing and works with or without post-processing. `?nodark` turns it off.
-if (!qs.has("nodark")) THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace("#ifdef USE_FOG", `#ifdef USE_FOG
-	gl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.56, 0.6, 0.74 ), smoothstep( 120.0, 950.0, vFogDepth ) );`);
+// Distance darkening: before the usual sky-coloured haze, every fogged material dims (and cools) with distance from
+// the camera, so the foreground pops and far districts recede. Injected into each fogged material's shader with one
+// shared uniform, so it costs nothing and can be toggled live (F key / button / city.fx({dark}); `?nodark` starts off).
+const distDark = { value: qs.has("nodark") ? 0 : 1 }, distFocus = { value: 300 };   // focus = distance to the orbit target (updated per frame)
+function addDistanceDarkening(root) {
+  root.traverse((o) => { for (const m of [o.material].flat()) { if (!m || !m.fog || m.userData.distDark) continue; m.userData.distDark = true;
+    m.onBeforeCompile = (sh) => { sh.uniforms.uDistDark = distDark; sh.uniforms.uDistFocus = distFocus; sh.fragmentShader = "uniform float uDistDark;\nuniform float uDistFocus;\n" + sh.fragmentShader.replace("#include <fog_fragment>",
+      "#ifdef USE_FOG\n\tgl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.52, 0.57, 0.74 ), smoothstep( uDistFocus * 0.9, uDistFocus * 2.0, vFogDepth ) * uDistDark );\n#endif\n#include <fog_fragment>"); };
+    m.customProgramCacheKey = () => "distDark"; m.needsUpdate = true; } });
+}
 const city = (window.city = { ready: false });
 const setStatus = (t) => { const el = document.getElementById("loading"); if (el) el.textContent = t; };
 
@@ -64,7 +69,13 @@ composer.addPass(new OutputPass());
 renderer.info.autoReset = false;   // count every pass of a frame (stats)
 renderer.shadowMap.autoUpdate = false;   // the GTAO normal pass re-renders the scene: draw the shadow map once per frame, not per pass
 const draw = () => { renderer.info.reset(); renderer.shadowMap.needsUpdate = true; if (AO) composer.render(); else renderer.render(scene, camera); };
-addEventListener("keydown", (e) => { if (e.key.toLowerCase() === "o" && !e.metaKey && !e.ctrlKey) AO = !AO; });
+// Effect toggles: small buttons bottom-right + keys (O = ambient occlusion, F = distance darkening)
+const FX = { ao: { label: "AO", key: "o", get: () => AO, set: (v) => { AO = v; } }, dark: { label: "DEPTH FOG", key: "f", get: () => distDark.value > 0, set: (v) => { distDark.value = v ? 1 : 0; } } };
+const fxBar = document.getElementById("fx");
+for (const [k, f] of Object.entries(FX)) { const b = document.createElement("button"); b.dataset.fx = k; b.title = `toggle (${f.key.toUpperCase()} key)`; b.onclick = () => { f.set(!f.get()); syncFx(); }; fxBar?.appendChild(b); }
+function syncFx() { for (const b of fxBar?.children ?? []) { const f = FX[b.dataset.fx]; b.textContent = `${f.label} ${f.get() ? "ON" : "OFF"}`; b.classList.toggle("on", f.get()); } }
+syncFx();
+addEventListener("keydown", (e) => { if (e.metaKey || e.ctrlKey || e.altKey) return; for (const f of Object.values(FX)) if (e.key.toLowerCase() === f.key) { f.set(!f.get()); syncFx(); } });
 addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); });
 
 const VIEWS = {
@@ -327,21 +338,22 @@ function frame(dt, render = true) {
   controls.target.x = Math.max(-100, Math.min(W.WX + 100, controls.target.x)); controls.target.z = Math.max(-100, Math.min(W.WZ + 100, controls.target.z));
   controls.update();
   const T = controls.target; sun.target.position.set(Math.round(T.x / 4) * 4, 0, Math.round(T.z / 4) * 4); sun.position.copy(sun.target.position).add(V.set(-260, 420, 220));
-  const dist = camera.position.distanceTo(T); const ext = Math.max(120, Math.min(420, dist * 0.75)); Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext }); sun.shadow.camera.updateProjectionMatrix();
+  const dist = camera.position.distanceTo(T); distFocus.value = Math.max(60, dist);   // what you're looking at stays bright; beyond it darkens const ext = Math.max(120, Math.min(420, dist * 0.75)); Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext }); sun.shadow.camera.updateProjectionMatrix();
   if (render) draw();
   infoT += dt; if (infoT > 0.3) { infoT = 0; if (followed) updateInfo(); const s = sim.stats(); census.innerHTML = `Out &amp; about: ${s.outside}<br>Indoors: ${s.inside}<br>Carts &amp; chairs: ${s.vehicles}`; }
   fpsN++; fpsT += dt; if (fpsT > 1) { document.getElementById("stats").textContent = `${Math.round(fpsN / fpsT)} fps · ${sim.stats().actors} actors`; fpsN = 0; fpsT = 0; }
 }
 city.advance = (secs, fps = 30) => { for (let i = 0; i < secs * fps; i++) frame(1 / fps, false); draw(); };
 city.render = () => draw();
-city.ao = (on) => { if (on !== undefined) AO = !!on; return AO; };
+city.ao = (on) => { if (on !== undefined) { AO = !!on; syncFx(); } return AO; };
+city.fx = (o = {}) => { for (const [k, v] of Object.entries(o)) FX[k]?.set(!!v); syncFx(); return Object.fromEntries(Object.entries(FX).map(([k, f]) => [k, f.get()])); };
 city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles });
 
 (async () => {
   try {
     setStatus("BUILDING THE CITY...");
     tufts(); crops(); bushes();
-    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); await bakeSkyOcclusion();
+    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); await bakeSkyOcclusion(); addDistanceDarkening(scene);
     setView(qs.get("view") ?? "town");
     if (qs.get("t")) city.advance(+qs.get("t"));
     document.getElementById("loading")?.remove();
