@@ -11,6 +11,7 @@ import { loadModel, meshVoxels, gridFromVoxels } from "./voxels.js";
 import { personVoxels, animalVoxels, DOG_COLORS, CAT_LOOKS, PIGEON_COLORS, DUCK_LOOKS } from "./people.js";
 import { createSim } from "./sim.js";
 import { WHEELS, wheelModel } from "../models/recipes/props.js";
+import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
 
 const qs = new URLSearchParams(location.search);
 if (qs.get("seed")) W.setSeed(+qs.get("seed"));
@@ -162,7 +163,7 @@ function tufts() { // little 3D grass tufts and rice seedlings to break up the f
     if (W.isStreet(x, z) || W.inRect(x, z, W.PLAZA) || W.inRect(x, z, W.PALACE) || (W.inRect(x, z, W.CITY_R) && !W.isStreet(x, z) && chance3())) continue; pts.push([x, z, W.pick(["#4ea23a", "#62b446", "#3a8430", "#90d866"])]); }
   const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length); const col = new THREE.Color();
   pts.forEach(([x, z, c], i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(c)); });
-  im.receiveShadow = true; scene.add(im);
+  im.receiveShadow = true; scene.add(im); groundCover.push({ im, pts });
 }
 const chance3 = () => W.rand() < 0.7;
 function bushes() { // leafy bushes and flower clumps scattered over the countryside
@@ -170,7 +171,7 @@ function bushes() { // leafy bushes and flower clumps scattered over the country
   const pts = []; for (let i = 0; i < 2600; i++) { const x = W.rnd(-60, W.WX + 60), z = W.rnd(W.RIVER.zc(0) + 24, W.WZ + 40); if (W.occupied(x, z, 2)) continue; pts.push([x, z, W.pick(["#3aa848", "#2e8a3a", "#4cb85a", "#58c060", "#3a9a40", "#f8b8c8", "#f0e060"])]); }
   const im = new THREE.InstancedMesh(meshVoxels(gridFromVoxels(vox, 16)), new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length), col = new THREE.Color();
   pts.forEach(([x, z, c], i) => { const sc = W.rnd(0.7, 1.5); Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(sc, sc * W.rnd(0.7, 1.1), sc))); im.setColorAt(i, col.set(c)); });
-  im.castShadow = true; im.receiveShadow = true; scene.add(im);
+  im.castShadow = true; im.receiveShadow = true; scene.add(im); groundCover.push({ im, pts });
 }
 function crops() { // 3D crop rows on the farm fields: cabbages and wheat
   const kinds = { cabbage: [[[8, 0, 8], [9, 0, 8], [8, 0, 9], [9, 0, 9], [8, 1, 8], [9, 1, 9], [8, 1, 9]], ["#58c060", "#3aa848", "#7ad870"]], wheat: [[[8, 0, 8], [8, 1, 8], [8, 2, 8], [8, 3, 8], [8, 3, 9]], ["#e8c048", "#d8b038", "#f0d060"]] };
@@ -198,11 +199,11 @@ async function buildActors() {
     const geo = look.model ? await modelGeometry(look.model, null, "m:" + look.model) : meshVoxels(look.animal ? animalGrid(look) : gridFromVoxels(personVoxels(look), 16), { pivot: "base" });
     const im = new THREE.InstancedMesh(geo, vmat, list.length); im.castShadow = true; im.receiveShadow = !LOW; im.frustumCulled = false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.userData.actors = list.map((x) => x.a);
-    list.forEach((x, i) => { x.a._mesh = im; x.a._slot = i; x.a.hp = Math.random() * 6; });
+    list.forEach((x, i) => { x.a._mesh = im; x.a._slot = i; x.a.hp = Math.random() * 6; im.setColorAt(i, WHITE); });
     scene.add(im); actorMeshes.set(k, im); if (list[0].pick) pickables.push(im);
     if (look.animal === "pigeon") { // flight frames: wings up / wings down, same slots as the folded mesh
       const poses = ["up", "down"].map((pose) => { const m = new THREE.InstancedMesh(meshVoxels(animalGrid(look, pose), { pivot: "base" }), vmat, list.length);
-        m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); actorMeshes.set(k + ":" + pose, m); return m; });
+        m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); for (let i = 0; i < list.length; i++) m.setColorAt(i, WHITE); scene.add(m); actorMeshes.set(k + ":" + pose, m); return m; });
       for (const x of list) x.a._poses = poses;
     }
   }));
@@ -230,6 +231,31 @@ function updateVehicleWheels() {
     im.instanceMatrix.needsUpdate = true;
   }
 }
+// ---------- baked sky occlusion (skyao.js): darkens the ground in alleys / narrow streets / courtyards and tints
+// people and animals walking through them. Screen-space GTAO handles the small-scale contact shading on top.
+const AO_TINT = new THREE.Color("#5d6c9c"), WHITE = new THREE.Color(1, 1, 1), AOC = new THREE.Color();
+const aoDark = (o) => { const t = Math.min(1, Math.max(0, (o - 0.1) / 0.45)); return t * t * (3 - 2 * t); };   // smoothstep: open streets stay bright
+let occAt = () => 0;
+const groundCover = [];   // grass tufts / bushes: [{im, pts: [[x, z, …]]}], shaded with the ground after the bake
+const SKY = !qs.has("nosky");
+async function bakeSkyOcclusion() {
+  if (!SKY) return;
+  const tops = new Map();
+  for (const st of L.statics) if (!tops.has(st.model)) { const g = await loadModel(st.model); tops.set(st.model, { tops: columnTops(g), size: g.size }); }
+  const M = 90, rect = { x: W.CITY.x0 - M, z: W.CITY.z0 - M, w: W.CITY.x1 - W.CITY.x0 + 2 * M, d: W.CITY.z1 - W.CITY.z0 + 2 * M };
+  const ao = bakeSkyAO(heightMap(L.statics.map((st) => ({ ...st, ...tops.get(st.model) })), rect, 2)); occAt = sampler(ao);
+  // multiply a soft, cool shadow layer into the painted ground (bilinear upscale from the 2-unit bake)
+  const c = document.createElement("canvas"); c.width = ao.nx; c.height = ao.nz; const g = c.getContext("2d"), img = g.createImageData(ao.nx, ao.nz);
+  for (let k = 0; k < ao.occ.length; k++) { const d = aoDark(ao.occ[k]) * 0.65; AOC.copy(WHITE).lerp(AO_TINT, d); img.data[k * 4] = AOC.r * 255; img.data[k * 4 + 1] = AOC.g * 255; img.data[k * 4 + 2] = AOC.b * 255; img.data[k * 4 + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  const gc = tex.image.getContext("2d"); gc.save(); gc.globalCompositeOperation = "multiply"; gc.imageSmoothingEnabled = true; gc.drawImage(c, rect.x, rect.z, ao.nx * ao.res, ao.nz * ao.res); gc.restore();
+  tex.needsUpdate = true;
+  const col = new THREE.Color();
+  for (const { im, pts } of groundCover) { pts.forEach(([x, z], i) => { im.getColorAt(i, col); im.setColorAt(i, col.multiply(AOC.copy(WHITE).lerp(AO_TINT, aoDark(occAt(x, z)) * 0.65))); }); im.instanceColor.needsUpdate = true; }
+}
+/** Actor tint from the sky occlusion where it stands (less when up on a wall or roof). */
+function aoTint(e, y) { const d = aoDark(occAt(e.x, e.z)) * 0.45 * Math.max(0, 1 - y / 12); return AOC.copy(WHITE).lerp(AO_TINT, d); }
+
 let wheel = null;
 async function buildWheel() { wheel = new THREE.Mesh(await modelGeometry("waterwheel", null, "waterwheel"), vmat); wheel.castShadow = true; wheel.position.set(L.WHEEL.x, 10, W.RIVER.zc(L.WHEEL.x) - 3); scene.add(wheel); }
 
@@ -243,16 +269,18 @@ function updateActors(dt) {
     if (e.kind === "vehicle") e.roll = (e.roll ?? 0) + moved / (e.scale ?? 1);
     const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;   // slower walkers bob less
     place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
+    e._mesh.setColorAt(e._slot, aoTint(e, e.y || 0));
   }
   for (const g of sim.pigeons) { // folded on the ground; flying birds alternate the wings-up / wings-down meshes
     const fly = g.state === "fly", flap = Math.sin(sim.time * 14 + g.phase), y = g.y + (fly ? Math.abs(flap) * 0.6 : 0), main = g._mesh;
     const show = fly ? g._poses[flap > 0 ? 0 : 1] : main;
     for (const m of [main, ...g._poses]) { g._mesh = m; place(g, g.x, y, g.z, g.yaw, m === show ? 1 : 0); }
+    show.setColorAt(g._slot, aoTint(g, y));
     g._mesh = main;
   }
   for (const b of sim.boats) place(b, b.x, -0.6 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
   for (const d of sim.ducks) place(d, d.x, -0.2 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
-  for (const im of actorMeshes.values()) im.instanceMatrix.needsUpdate = true;
+  for (const im of actorMeshes.values()) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
   updateVehicleWheels();
   for (const [i, gl] of riverGlints.entries()) { gl.map.offset.x -= gl.speed * dt * 4; gl.map.offset.y = Math.sin(sim.time * 0.35 * gl.wob + i) * 0.06; gl.mat.opacity = gl.op * (0.8 + 0.2 * Math.sin(sim.time * gl.wob * 1.7 + i * 2)); }
   if (wheel) wheel.rotation.z = -sim.time * 0.8;
@@ -307,7 +335,7 @@ city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.inf
   try {
     setStatus("BUILDING THE CITY...");
     tufts(); crops(); bushes();
-    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels();
+    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); await bakeSkyOcclusion();
     setView(qs.get("view") ?? "town");
     if (qs.get("t")) city.advance(+qs.get("t"));
     document.getElementById("loading")?.remove();

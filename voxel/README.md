@@ -17,7 +17,7 @@ bun run statue              # rebuild the giant statue (a Voxer recipe file, bui
 (orbiting keeps following; right-drag, WASD or Esc stops).
 **Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
 **URL params:** `?view=town|overview|city|district|alley|plaza|statue|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
-fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key).
+fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key) · `&nosky` (no baked sky occlusion).
 
 ## Layout
 
@@ -28,6 +28,7 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao
 | `src/world.js` | world layout (street grid, blocks, plaza, fort, walls, river, paddies, fields, hamlets, roads, hills), static placements, ground texture, mountain + hill meshes, `groundH(x,z)` |
 | `src/sim.js` | street graph + shortest routes, places with door approaches, citizens/vehicles/soldiers/pets/livestock/pigeons/boats/ducks, crowd steering + collisions |
 | `src/people.js` | procedural voxel people (archetype looks) and animals |
+| `src/skyao.js` | baked sky occlusion: model column tops → height map → horizon AO → bilinear sampler (pure JS) |
 | `src/voxels.js` | Voxer scene decoding + face-culled greedy mesher (merges flat faces with equal color and AO) with per-vertex ambient occlusion |
 | `models/recipes/*.js` | model recipes (Voxer draw ops); `colors.js` is shared with the browser for variant re-coloring |
 | `models/recipes/statue.recipe.js` | the giant marble Jupiter in the market square — a **Voxer recipe file** (`build(ctx)`, slots, anchors), not part of the `index.js` registry; `bun run statue` builds it with Voxer's `bun run recipe` into `models/statue.json` + `models/sheets/statue.png` (and merges its `manifest.json` entry) |
@@ -40,6 +41,10 @@ sides read cool, lit sides warm), ACES tone mapping. Ambient occlusion at two sc
 every mesh (`voxels.js`) and screen-space **GTAO** (`EffectComposer`: RenderPass → GTAOPass → OutputPass, 4× MSAA
 target) for contact shadows between people, buildings and the ground. GTAO re-renders the scene for normals (~+60%
 triangles); the sun's shadow map is drawn once per frame. `city.ao(false)` / `?noao` / **O** turns it off.
+Large-scale **sky occlusion** is baked at load (`src/skyao.js`, ~0.3 s): a height map of every placed model's
+column tops, then horizon-based "how much sky is visible" per 2-unit cell over the city. It multiplies a cool
+shadow tint into the ground texture, grass tufts and bushes, and tints people/animals by where they stand (less when
+up on walls or roofs), so alleys, courtyards and the foot of the walls read darker. `?nosky` disables it.
 
 ## Conventions
 - **World:** 1 unit = 1 voxel. x east, z south, y up. An 8×8 grid of blocks with irregular column widths / row
