@@ -139,14 +139,31 @@ export function layout() {
   // ---- city blocks: 2–3 buildings per row (homes, shops, inns, manors); the south row faces south, the north row north
   const TYPES = ["home1", "home1", "home2", "home2", "shop", "shop", "inn", "manor", "manor"];
   const stripDoors = (STRIP_DOORS = {});      // "r:c" → door x's facing that street/alley strip (keep alley gardens clear)
+  // Away from the centre the rows loosen up ("organic" factor f: 0 near the plaza/palace/avenue → 1 in the outer
+  // districts): uneven spacing, the odd garden gap with trees instead of a third house, deeper setbacks and a slight
+  // skew (≤ ~7.5°). Doors follow each house, so the sim's approaches stay right. Footprints are ~34 wide, ~30 deep.
+  const HALF_W = { inn: 20 }, organicAt = (x, z) => { const d = Math.hypot(x - CENTER.x, z - CENTER.z), t = Math.min(1, Math.max(0, (d - 230) / 260)); return t * t * (3 - 2 * t); };
   for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
     if (isSpecialBlock(c, r)) continue;
-    const b = block(c, r), n = b.w >= 104 ? 3 : 2;
-    for (const south of [true, false]) for (let i = 0; i < n; i++) {
-      const type = pick(TYPES), x = Math.round(b.x + (b.w * (i + 0.5)) / n), z = south ? b.z + b.d - 13 : b.z + 13, rr = south ? r + 1 : r;
-      put(type, x, z, south ? 0 : 2, houseVariant(type));
-      (stripDoors[rr + ":" + c] ??= []).push(x);
-      houses.push({ type, x, z, south, c, r, doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 7 : z - 7, roofY: type === "home2" || type === "inn" ? 29 : type === "manor" ? 17 : 23 });
+    const b = block(c, r), f = organicAt(b.x + b.w / 2, b.z + b.d / 2);
+    for (const south of [true, false]) {
+      let n = b.w >= 104 ? 3 : 2; if (n === 3 && chance(0.4 * f)) n = 2;   // sometimes a garden instead of a third house
+      const types = [...Array(n)].map(() => pick(TYPES)), widths = types.map((t) => 17 + (HALF_W[t] ?? 17) + 3);   // + skew margin
+      const slack = Math.max(0, b.w - 6 - widths.reduce((a, w) => a + w, 0)), wts = [...Array(n + 1)].map(() => 1 - f + f * rnd(0.15, 1.85)), sw = wts.reduce((a, w) => a + w, 0);
+      let cursor = b.x + 3 + slack * wts[0] / sw, prevEnd = b.x;
+      const deepMax = Math.max(0, Math.min(9, b.d / 2 - 33));
+      for (let i = 0; i < n; i++) {
+        const type = types[i], x = Math.round(cursor + 17 - (type === "inn" ? -1 : 0)), dz = Math.round(rnd(0, deepMax) * f), skew = rnd(-0.13, 0.13) * f;
+        const z = south ? b.z + b.d - 13 - dz : b.z + 13 + dz, rr = south ? r + 1 : r, yaw = (south ? 0 : Math.PI) + skew;
+        put(type, x, z, yaw / (Math.PI / 2), houseVariant(type));
+        const doorX = Math.round(x + 7 * Math.sin(yaw)), inZ = z + 7 * Math.cos(yaw);   // door threshold ~7 in front of the centre, rotated with the house
+        (stripDoors[rr + ":" + c] ??= []).push(doorX);
+        houses.push({ type, x, z, south, c, r, doorX, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ, roofY: type === "home2" || type === "inn" ? 29 : type === "manor" ? 17 : 23 });
+        // a wide gap before this house becomes a little garden at the street front
+        const gapL = prevEnd, gapR = cursor; if (gapR - gapL > 14 && f > 0.3) for (let gx = gapL + 6; gx < gapR - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
+        prevEnd = cursor + widths[i]; cursor = prevEnd + slack * wts[i + 1] / sw;
+      }
+      if (b.x + b.w - prevEnd > 14 && f > 0.3) for (let gx = prevEnd + 6; gx < b.x + b.w - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
     }
     for (let i = 0; i < 3; i++) tree(b.x + rnd(8, b.w - 8), b.z + b.d / 2 + rnd(-4, 4));
     if (chance(0.5)) put(pick(["well", "haystack", "crates", "jars"]), b.x + rnd(14, b.w - 14), b.z + b.d / 2, rndi(0, 3));

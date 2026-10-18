@@ -21,7 +21,7 @@ export function columnTops(grid) {
 export function heightMap(placements, rect, res = 2) {
   const nx = Math.ceil(rect.w / res), nz = Math.ceil(rect.d / res), h = new Float32Array(nx * nz);
   for (const p of placements) {
-    const S = p.size, t = p.tops, a = (p.rot || 0) * Math.PI / 2, ca = Math.round(Math.cos(a)), sa = Math.round(Math.sin(a));
+    const S = p.size, t = p.tops, a = (p.rot || 0) * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
     for (let lz = 0; lz < S; lz++) for (let lx = 0; lx < S; lx++) {
       const top = t[lz * S + lx]; if (!top) continue;
       const ox = lx + 0.5 - S / 2, oz = lz + 0.5 - S / 2;
