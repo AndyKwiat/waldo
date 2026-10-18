@@ -45,8 +45,8 @@ Large-scale **sky occlusion** is baked at load (`src/skyao.js`, ~0.3 s): a heigh
 column tops, then horizon-based "how much sky is visible" per 2-unit cell over the city. It multiplies a cool
 shadow tint into the ground texture, grass tufts and bushes, and tints people/animals by where they stand (less when
 up on walls or roofs), so alleys, courtyards and the foot of the walls read darker. `?nosky` disables it.
-**Distance darkening:** three's fog chunk is patched so fogged materials dim ~25% (slightly cool) between 180 and
-1100 units from the camera, before the sky-coloured haze (1400–3800); the sky itself stays bright. `?nodark` disables it.
+**Distance darkening:** three's fog chunk is patched so fogged materials dim up to ~40% (cool blue) between 120 and
+950 units from the camera, before the sky-coloured haze (1400–3800); the sky itself stays bright. `?nodark` disables it.
 
 ## Conventions
 - **World:** 1 unit = 1 voxel. x east, z south, y up. An 8×8 grid of blocks with irregular column widths / row
