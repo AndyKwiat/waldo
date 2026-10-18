@@ -10,6 +10,9 @@ import * as THREE from "three";
 export const GLOW = {
   "#e0382c": { emit: [1.0, 0.42, 0.2], kind: "lantern" },   // M.lantern
   "#f6e6b8": { emit: [1.0, 0.72, 0.36], kind: "window" },   // M.paper (lattice windows, paper screens)
+  // M.lattice (the wooden grid in lattice windows) glows dimly too: a checkerboard of single-voxel bright/black squares
+  // is finer than a pixel at city distances and shimmers; bright/amber reads as a soft warm grid instead
+  "#a8743e": { emit: [0.55, 0.3, 0.12], kind: "window", dim: true },
 };
 // Light map channels: R = street-level lights (lanterns, windows; fade above ~y 8–30), G = high lights (wall-top
 // torches; light a band around y 26). The colour is applied in the shader (warm), so channels are just intensity.
@@ -33,7 +36,8 @@ export function glowGeometry(grid) {
       if (at(x + dx, y + dy, z + dz)) continue;
       // quad on the face: centre + two in-plane axes
       const n = [dx, dy, dz], u = dx ? [0, 1, 0] : [1, 0, 0], w = dz ? [0, 1, 0] : dy ? [0, 0, 1] : [0, 0, 1];
-      const c = [x + 0.5 + dx * 0.5 - S / 2, y + 0.5 + dy * 0.5, z + 0.5 + dz * 0.5 - S / 2], b = pos.length / 3;
+      const E = 0.02;   // sit just in front of the surface (stable depth instead of polygon offset, which flickers)
+      const c = [x + 0.5 + dx * (0.5 + E) - S / 2, y + 0.5 + dy * (0.5 + E), z + 0.5 + dz * (0.5 + E) - S / 2], b = pos.length / 3;
       for (const [su, sw] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { pos.push(c[0] + (u[0] * su + w[0] * sw) * 0.5, c[1] + (u[1] * su + w[1] * sw) * 0.5, c[2] + (u[2] * su + w[2] * sw) * 0.5); col.push(...g.emit); }
       idx.push(b, b + 1, b + 2, b, b + 2, b + 3); void n;
     }
@@ -47,7 +51,7 @@ export function glowGeometry(grid) {
 export function lightSources(grid) {
   const S = grid.size, cells = grid.cells, glow = grid.palette.map((h) => GLOW[h.toLowerCase()] ?? null), bins = new Map();
   for (let y = 0; y < S; y++) for (let z = 0; z < S; z++) for (let x = 0; x < S; x++) {
-    const v = cells[(y * S + z) * S + x]; if (!v) continue; const g = glow[v - 1]; if (!g) continue;
+    const v = cells[(y * S + z) * S + x]; if (!v) continue; const g = glow[v - 1]; if (!g || g.dim) continue;
     const k = `${Math.floor(x / 3)},${Math.floor(y / 3)},${Math.floor(z / 3)}`; const b = bins.get(k) ?? bins.set(k, { x: 0, y: 0, z: 0, n: 0, kind: g.kind }).get(k);
     b.x += x + 0.5; b.y += y + 0.5; b.z += z + 0.5; b.n++; if (g.kind === "lantern") b.kind = "lantern";
   }
@@ -67,6 +71,34 @@ export function lightMapCanvas(lights, rect, res = 2) {
   return c;
 }
 
+function radial(stops, size = 256) {
+  const c = document.createElement("canvas"); c.width = c.height = size; const g = c.getContext("2d"), r = size / 2, grd = g.createRadialGradient(r, r, 0, r, r, r);
+  for (const [t, col] of stops) grd.addColorStop(t, col); g.fillStyle = grd; g.fillRect(0, 0, size, size); return new THREE.CanvasTexture(c);
+}
+function moonTexture() { // a full moon: pale disc with soft grey maria and a few craters
+  const S = 256, c = document.createElement("canvas"); c.width = c.height = S; const g = c.getContext("2d");
+  g.fillStyle = "#f4f1e6"; g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 2, 0, 7); g.fill(); g.save(); g.clip();
+  for (const [x, y, r, a] of [[0.38, 0.36, 0.2, 0.22], [0.6, 0.3, 0.13, 0.2], [0.55, 0.55, 0.17, 0.18], [0.33, 0.62, 0.11, 0.16], [0.7, 0.66, 0.09, 0.14], [0.47, 0.44, 0.08, 0.12]]) {
+    const grd = g.createRadialGradient(x * S, y * S, 0, x * S, y * S, r * S); grd.addColorStop(0, `rgba(105,110,130,${a + 0.3})`); grd.addColorStop(0.6, `rgba(105,110,130,${(a + 0.3) * 0.6})`); grd.addColorStop(1, "rgba(105,110,130,0)"); g.fillStyle = grd; g.fillRect(0, 0, S, S); }
+  for (const [x, y, r] of [[0.28, 0.78, 0.03], [0.75, 0.42, 0.025], [0.62, 0.82, 0.02], [0.2, 0.45, 0.022]]) { g.strokeStyle = "rgba(150,150,165,0.6)"; g.lineWidth = 2; g.beginPath(); g.arc(x * S, y * S, r * S, 0, 7); g.stroke(); }
+  const shade = g.createRadialGradient(S * 0.42, S * 0.4, S * 0.2, S / 2, S / 2, S / 2); shade.addColorStop(0, "rgba(0,0,0,0)"); shade.addColorStop(1, "rgba(60,60,90,0.35)"); g.fillStyle = shade; g.fillRect(0, 0, S, S);
+  g.restore(); return new THREE.CanvasTexture(c);
+}
+/**
+ * Sun (day) and full moon (night) that follow the camera. They sit at the light's compass direction (so shadows fall
+ * away from them) but lower in the sky than the light itself, so they're actually visible from street-level views.
+ */
+export function celestial(lightDir) {
+  const group = new THREE.Group(), d = new THREE.Vector3(lightDir.x, 0, lightDir.z).normalize(); d.y = Math.tan(0.42); d.normalize().multiplyScalar(3300);
+  const add = (size, mat) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat); m.position.copy(d); m.lookAt(0, 0, 0); m.renderOrder = -7; group.add(m); return m; };
+  const opts = { fog: false, transparent: true, depthWrite: false };
+  const sunGlow = add(1500, new THREE.MeshBasicMaterial({ ...opts, map: radial([[0, "rgba(255,244,210,0.75)"], [0.2, "rgba(255,226,160,0.28)"], [1, "rgba(255,210,140,0)"]]), blending: THREE.AdditiveBlending }));
+  const sun = add(250, new THREE.MeshBasicMaterial({ ...opts, map: radial([[0, "rgba(255,255,248,1)"], [0.7, "rgba(255,250,225,1)"], [0.8, "rgba(255,236,180,0.6)"], [1, "rgba(255,230,170,0)"]]), color: new THREE.Color(2.6, 2.15, 1.25) }));
+  const moonGlow = add(900, new THREE.MeshBasicMaterial({ ...opts, map: radial([[0, "rgba(170,190,255,0.4)"], [0.3, "rgba(110,130,220,0.16)"], [1, "rgba(60,70,150,0)"]]), blending: THREE.AdditiveBlending }));
+  const moon = add(210, new THREE.MeshBasicMaterial({ ...opts, map: moonTexture(), color: new THREE.Color(0.86, 0.87, 0.9) }));   // just under the bloom threshold so the maria stay visible
+  return { group, set(n) { sun.material.opacity = 1 - n; sunGlow.material.opacity = 1 - n; moon.material.opacity = n; moonGlow.material.opacity = n; sun.visible = sunGlow.visible = n < 0.99; moon.visible = moonGlow.visible = n > 0.01; } };
+}
+
 /** Night sky that follows the camera: gradient dome, ~2500 twinkle-free stars, a moon in the light's direction. */
 export function nightSky(moonDir) {
   const group = new THREE.Group(); group.renderOrder = -10;
@@ -82,12 +114,6 @@ export function nightSky(moonDir) {
   const sg = new THREE.BufferGeometry(); sg.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute("color", new THREE.Float32BufferAttribute(sc, 3));
   const starMat = new THREE.PointsMaterial({ size: 2.2, sizeAttenuation: false, vertexColors: true, fog: false, transparent: true, opacity: 0, depthWrite: false });
   const stars = new THREE.Points(sg, starMat); stars.renderOrder = -9; group.add(stars);
-  const moonMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.15, 1.9), fog: false, transparent: true, opacity: 0, depthWrite: false });
-  const moon = new THREE.Mesh(new THREE.CircleGeometry(70, 32), moonMat); moon.position.copy(moonDir.clone().normalize().multiplyScalar(R - 120)); moon.lookAt(0, 0, 0); moon.renderOrder = -8; group.add(moon);
-  const hc = document.createElement("canvas"); hc.width = hc.height = 128; const hg = hc.getContext("2d"), grd = hg.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, "rgba(150,170,255,0.9)"); grd.addColorStop(0.3, "rgba(90,110,200,0.35)"); grd.addColorStop(1, "rgba(40,50,120,0)"); hg.fillStyle = grd; hg.fillRect(0, 0, 128, 128);
-  const haloMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(hc), fog: false, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
-  const halo = new THREE.Mesh(new THREE.PlaneGeometry(520, 520), haloMat); halo.position.copy(moon.position).multiplyScalar(1.01); halo.lookAt(0, 0, 0); halo.renderOrder = -9; group.add(halo);
   group.visible = false;
-  return { group, set(n) { group.visible = n > 0.01; domeMat.opacity = n; starMat.opacity = Math.min(1, n * 1.2); moonMat.opacity = n; haloMat.opacity = n * 0.6; } };
+  return { group, set(n) { group.visible = n > 0.01; domeMat.opacity = n; starMat.opacity = Math.min(1, n * 1.2); } };
 }

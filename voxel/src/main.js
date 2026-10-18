@@ -13,7 +13,7 @@ import { personVoxels, personParts, animalParts, animalVoxels, DOG_COLORS, CAT_L
 import { createSim } from "./sim.js";
 import { WHEELS, wheelModel } from "../models/recipes/props.js";
 import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
-import { glowGeometry, lightSources, lightMapCanvas, nightSky } from "./night.js";
+import { glowGeometry, lightSources, lightMapCanvas, nightSky, celestial } from "./night.js";
 
 const qs = new URLSearchParams(location.search);
 if (qs.get("seed")) W.setSeed(+qs.get("seed"));
@@ -310,26 +310,31 @@ function aoTint(e, y) { const d = aoDark(occAt(e.x, e.z)) * 0.45 * Math.max(0, 1
 // ---------- night mode: glowing lanterns/windows, torch-lit walls, warm light pools (light map), moon + night sky
 const DAY = { bg: new THREE.Color("#7cc6f4"), fog: new THREE.Color("#a2d6f4"), hemiS: new THREE.Color("#dcecff"), hemiG: new THREE.Color("#7a6a4a"), sun: new THREE.Color("#ffe8c8") };
 const NGT = { bg: new THREE.Color("#070c20"), fog: new THREE.Color("#18234a"), hemiS: new THREE.Color("#3a4c86"), hemiG: new THREE.Color("#181822"), sun: new THREE.Color("#9fb6ff") };
-const glowMats = []; let sky = null;
+const glowMats = []; let sky = null, sunMoon = null;
+const HOUSE_MODELS = new Set(["home1", "home2", "shop", "inn", "manor", "hall_house", "compound"]);
 async function buildNight() {
   const lights = [], byModel = new Map();
   for (const st of L.statics) (byModel.get(st.model) ?? byModel.set(st.model, []).get(st.model)).push(st);
   for (const [model, list] of byModel) {
     const g = await loadModel(model), geo = glowGeometry(g); if (!geo) continue;
     const ls = lightSources(g);
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 });
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     const im = new THREE.InstancedMesh(geo, mat, list.length); im.frustumCulled = false; im.visible = false;
+    // not every household is still up: a stable per-building chance of being lit, and a little brightness variety
+    const pLit = HOUSE_MODELS.has(model) ? 0.45 : model === "lantern_post" ? 0.5 : 0.8, col = new THREE.Color();
     list.forEach((st, i) => {
       Q.setFromAxisAngle(UP, st.rot * Math.PI / 2); im.setMatrixAt(i, M4.compose(V.set(st.x, st.y, st.z), Q, SC.set(1, 1, 1)));
+      const h = Math.abs(Math.sin(st.x * 12.9898 + st.z * 78.233) * 43758.5453) % 1, lit = h < pLit, gain = lit ? 0.75 + 0.35 * (h / pLit) : 0;
+      im.setColorAt(i, col.setScalar(gain)); if (!lit) return;
       const a = st.rot * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
-      for (const l of ls) lights.push({ x: st.x + l.x * ca + l.z * sa, z: st.z - l.x * sa + l.z * ca, kind: l.kind });
+      for (const l of ls) lights.push({ x: st.x + l.x * ca + l.z * sa, z: st.z - l.x * sa + l.z * ca, kind: l.kind, gain });
     });
     scene.add(im); glowMats.push({ mat, im });
   }
   // torches along the city wall walkways (skipping the south gate)
   const torches = [], H = W.WALL.h;
-  for (const z of [W.WALL.n, W.WALL.s]) for (let x = W.CITY.x0 + 20; x < W.CITY.x1 - 10; x += 46) if (!(z === W.WALL.s && Math.abs(x - W.GATE_X) < 36)) torches.push([x, z]);
-  for (const x of [W.WALL.w, W.WALL.e]) for (let z = W.CITY.z0 + 20; z < W.CITY.z1 - 10; z += 46) torches.push([x, z]);
+  for (const z of [W.WALL.n, W.WALL.s]) for (let x = W.CITY.x0 + 20; x < W.CITY.x1 - 10; x += 78) if (!(z === W.WALL.s && Math.abs(x - W.GATE_X) < 36)) torches.push([x, z]);
+  for (const x of [W.WALL.w, W.WALL.e]) for (let z = W.CITY.z0 + 20; z < W.CITY.z1 - 10; z += 78) torches.push([x, z]);
   for (const t of torches) t.push(H);
   // braziers around the statue's pedestal light the figure from below (the high light band reaches its body)
   for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; torches.push([W.STATUE.x + Math.cos(a) * 31, W.STATUE.z + Math.sin(a) * 29, 0]); }
@@ -343,18 +348,19 @@ async function buildNight() {
   lm.flipY = false; lm.colorSpace = THREE.NoColorSpace; lm.minFilter = THREE.LinearFilter; lm.generateMipmaps = false;
   nightU.uLightMap.value = lm; nightU.uLightRect.value.set(rect.x, rect.z, rect.w, rect.d);
   sky = nightSky(new THREE.Vector3(-260, 420, 220)); scene.add(sky.group);
+  sunMoon = celestial(new THREE.Vector3(-260, 420, 220)); scene.add(sunMoon.group);
   city.nightLights = lights.length;
 }
 function applyNight(n) {
   scene.background.copy(DAY.bg).lerp(NGT.bg, n); scene.fog.color.copy(DAY.fog).lerp(NGT.fog, n);
   scene.fog.near = 1400 - 700 * n; scene.fog.far = 3800 - 900 * n;
-  hemi.color.copy(DAY.hemiS).lerp(NGT.hemiS, n); hemi.groundColor.copy(DAY.hemiG).lerp(NGT.hemiG, n); hemi.intensity = 0.8 - 0.42 * n;
-  sun.color.copy(DAY.sun).lerp(NGT.sun, n); sun.intensity = 3.0 - 2.55 * n; fill.intensity = 0.55 - 0.47 * n;
-  renderer.toneMappingExposure = 1.12 + 0.05 * n;
+  hemi.color.copy(DAY.hemiS).lerp(NGT.hemiS, n); hemi.groundColor.copy(DAY.hemiG).lerp(NGT.hemiG, n); hemi.intensity = 0.8 - 0.3 * n;
+  sun.color.copy(DAY.sun).lerp(NGT.sun, n); sun.intensity = 3.0 - 2.35 * n; fill.intensity = 0.55 - 0.42 * n;
+  renderer.toneMappingExposure = 1.12 + 0.1 * n;
   nightU.uNight.value = n;
   for (const g of glowMats) { g.im.visible = n > 0.01; if (g.opacityMode) g.mat.opacity = n; else g.mat.color.setScalar(1.6 * n); }
   bloom.enabled = n > 0.01; bloom.strength = 0.9 * n;
-  sky?.set(n);
+  sky?.set(n); sunMoon?.set(n);
 }
 
 let wheel = null;
@@ -391,6 +397,7 @@ function updateActors(dt) {
   updateVehicleWheels();
   if (night !== nightTarget) { night += (nightTarget - night) * Math.min(1, dt * 1.6); if (Math.abs(nightTarget - night) < 0.004) night = nightTarget; applyNight(night); }
   if (sky) sky.group.position.copy(camera.position);
+  if (sunMoon) sunMoon.group.position.copy(camera.position);
   for (const [i, gl] of riverGlints.entries()) { gl.map.offset.x -= gl.speed * dt * 4; gl.map.offset.y = Math.sin(sim.time * 0.35 * gl.wob + i) * 0.06; gl.mat.opacity = gl.op * (0.8 + 0.2 * Math.sin(sim.time * gl.wob * 1.7 + i * 2)); }
   if (wheel) wheel.rotation.z = -sim.time * 0.8;
 }

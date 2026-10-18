@@ -53,11 +53,16 @@ beyond recedes, at any zoom — before the sky-coloured haze (1400–3800); the 
 dim, soft shadows), hemisphere/fill drop, a gradient sky dome with stars and a moon follows the camera, fog goes navy.
 Lantern bodies (`M.lantern`) and paper windows (`M.paper`) glow: an additive overlay of just their exposed faces per
 model, plus bloom. Light pools come from one baked top-down **light map** (2 units/px over the whole world): every glowing
-voxel cluster in every placed model, wall-top torches and four braziers around the statue are splatted as radial
+voxel cluster in every lit building (each building has a fixed chance of being lit: ~45% of houses, half the lantern
+posts, 80% of other buildings), wall-top torches and four braziers around the statue are splatted as radial
 gradients — R channel for street-level lights (fades above ~y 20), G for high lights (a band around y 26). Every Lambert
 material adds `diffuse × warm × lightmap × height falloff × uNight` in its shader, so ground, walls, people and animals are
 all lit by thousands of lamps with a single texture lookup. Add a light: give a model `M.lantern` / `M.paper` voxels, or
 push into `lights` in `buildNight()`.
+Lattice windows glow as a soft warm grid (the wooden lattice glows dimly too: a bright/black single-voxel checkerboard
+shimmers at a distance), and glow faces sit 0.02 in front of the surface rather than using polygon offset. A sun (day)
+and full moon (night) sit at the light's compass direction, lower in the sky than the light itself so street-level views
+see them (`celestial()` in `night.js`).
 **Toggles:** buttons bottom-right (**NIGHT**, **AO**, **DEPTH FOG**), keys **N** / **O** / **F**, `city.fx({night, ao, dark})`; `?noao` / `?nodark` start them off.
 
 ## Conventions
