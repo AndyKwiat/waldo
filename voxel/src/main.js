@@ -13,6 +13,7 @@ import { personVoxels, personParts, animalParts, animalVoxels, DOG_COLORS, CAT_L
 import { createSim } from "./sim.js";
 import { WHEELS, wheelModel } from "../models/recipes/props.js";
 import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
+import { buildWater } from "./water.js";
 import { glowGeometry, lightSources, lightMapCanvas, nightSky, celestial } from "./night.js";
 
 const qs = new URLSearchParams(location.search);
@@ -25,7 +26,7 @@ const LOW = qs.has("low");           // cheaper rendering for headless screensho
 const distDark = { value: qs.has("nodark") ? 0 : 1 }, distFocus = { value: 300 };   // focus = distance to the orbit target (updated per frame)
 // Night lighting (night.js): one top-down light map of every lantern / window / torch; lit materials add
 // diffuse × light × height falloff, scaled by uNight (0 by day → no-op).
-const nightU = { uNight: { value: 0 }, uLightMap: { value: null }, uLightRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uLightGain: { value: 1.15 } };
+const nightU = { uNight: { value: 0 }, uLightMap: { value: null }, uLightRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uLightGain: { value: 1.15 }, uGroundMap: { value: null } };
 function addDistanceDarkening(root) {
   root.traverse((o) => { for (const m of [o.material].flat()) { if (!m || !m.fog || m.userData.distDark) continue; m.userData.distDark = true;
     const lit = m.isMeshLambertMaterial, prev = m.onBeforeCompile, prevKey = m.customProgramCacheKey.bind(m);
@@ -35,10 +36,11 @@ function addDistanceDarkening(root) {
       if (lit) {
         sh.vertexShader = "varying vec3 vNightWP;\n" + sh.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n\tvec4 nwp = vec4( transformed, 1.0 );\n#ifdef USE_INSTANCING\n\tnwp = instanceMatrix * nwp;\n#endif\n\tvNightWP = ( modelMatrix * nwp ).xyz;");
         night = "\tif ( uNight > 0.0 ) { vec2 luv = ( vNightWP.xz - uLightRect.xy ) / uLightRect.zw; if ( luv.x > 0.0 && luv.y > 0.0 && luv.x < 1.0 && luv.y < 1.0 ) {" +
-          " vec2 lm = texture2D( uLightMap, luv ).rg; float lo = lm.r * clamp( 1.0 - ( vNightWP.y - 5.0 ) / 15.0, 0.04, 1.0 ); float hi = lm.g * ( 1.0 - smoothstep( 4.0, 30.0, abs( vNightWP.y - 26.0 ) ) );" +
+          " vec2 lm = texture2D( uLightMap, luv ).rg; float ry = vNightWP.y - texture2D( uGroundMap, luv ).r * 256.0;" +
+          " float lo = lm.r * clamp( 1.0 - ( ry - 5.0 ) / 15.0, 0.04, 1.0 ); float hi = lm.g * ( 1.0 - smoothstep( 4.0, 30.0, abs( ry - 26.0 ) ) );" +
           " gl_FragColor.rgb += diffuseColor.rgb * vec3( 1.0, 0.62, 0.32 ) * ( lo + hi ) * uNight * uLightGain; } }\n";
       }
-      sh.fragmentShader = "uniform float uDistDark;\nuniform float uDistFocus;\nuniform float uNight;\nuniform sampler2D uLightMap;\nuniform vec4 uLightRect;\nuniform float uLightGain;\n" + (lit ? "varying vec3 vNightWP;\n" : "") +
+      sh.fragmentShader = "uniform float uDistDark;\nuniform float uDistFocus;\nuniform float uNight;\nuniform sampler2D uGroundMap;\nuniform sampler2D uLightMap;\nuniform vec4 uLightRect;\nuniform float uLightGain;\n" + (lit ? "varying vec3 vNightWP;\n" : "") +
         sh.fragmentShader.replace("#include <fog_fragment>", "#ifdef USE_FOG\n\tgl_FragColor.rgb *= mix( vec3( 1.0 ), vec3( 0.52, 0.57, 0.74 ), smoothstep( uDistFocus * 0.9, uDistFocus * 2.0, vFogDepth ) * uDistDark );\n#endif\n" + night + "#include <fog_fragment>");
     };
     m.customProgramCacheKey = () => prevKey() + "|distDark+night" + (lit ? "L" : ""); m.needsUpdate = true; } });
@@ -110,7 +112,9 @@ const VIEWS = {
   district: () => [[W.SX[1] - 40, 210, W.SZ[7] + 170], [W.SX[2] + 30, 0, W.SZ[5] + 20]],
   yard: () => [[W.GATE_X + 70, 60, W.YARD.z + W.YARD.d + 70], [W.GATE_X, 8, W.YARD.z + 10]],
   alley: () => { const e = W.EDGE_LIST.find((q) => q.type === "alley" && q.a[0] > 0) ?? W.EDGE_LIST[0], x = (W.SX[e.a[0]] + W.SX[e.b[0]]) / 2, z = W.alleyZ(e.a[1], e.a[0], x); return [[x - 26, 75, z + 34], [x + 6, 0, z]]; },
-  river: () => [[L.WHEEL.x - 40, 48, W.RIVER.zc(L.WHEEL.x) + 70], [L.WHEEL.x + 20, 4, W.RIVER.zc(L.WHEEL.x) - 4]],
+  river: () => [[W.RX + 120, 80, W.SZ[6] + 140], [W.RX, 0, W.SZ[5]]],
+  falls: () => [[W.RX + 150, 70, W.CITY.z0 + 60], [W.RX, 40, W.CLIFF_Z]],
+  mill: () => [[L.WHEEL.x - 50, 40, L.WHEEL.z + 70], [L.WHEEL.x + 10, 4, L.WHEEL.z]],
   paddies: () => [[W.GATE_X - 160, 70, W.WALL_S + 150], [W.GATE_X - 160, 0, W.WALL_S + 55]],
   pagoda: () => { const b = W.block(...W.PAGODA_BLOCK); return [[b.x + 120, 80, b.z + 170], [b.x + 42, 10, b.z + 40]]; },
   statue: () => [[W.STATUE.x + 2, 17, W.STATUE.z + 150], [W.STATUE.x - 2, 44, W.STATUE.z]],   // up the south avenue at Jupiter, who faces it
@@ -128,7 +132,8 @@ function placeCam(p, t) {
   camera.position.set(...p); controls.target.set(...t); followed = null; controls.update();
 }
 function setView(name) {
-  for (const b of viewBar.children) b.classList.toggle("on", b.dataset.view === name); const v = VIEWS[name] ?? VIEWS.town; const [p, t] = v(); placeCam(p, t); }
+  for (const b of viewBar.children) b.classList.toggle("on", b.dataset.view === name); const v = VIEWS[name] ?? VIEWS.town; const [p, t] = v();
+  const g = W.groundH(t[0], t[2]); placeCam([p[0], p[1] + g, p[2]], [t[0], t[1] + g, t[2]]); }   // views are relative to the ground under their target
 city.view = setView;
 city.cam = (pos, target) => placeCam(pos, target);
 
@@ -155,38 +160,26 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(W.WX, W.WZ), new THREE.Mes
 ground.rotation.x = -Math.PI / 2; ground.position.set(W.WX / 2, 0, W.WZ / 2); ground.receiveShadow = true; scene.add(ground);
 const outer = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshLambertMaterial({ color: "#5fae44", ...layer(-1) }));
 outer.rotation.x = -Math.PI / 2; outer.position.set(W.WX / 2, -0.3, W.WZ / 2); scene.add(outer);
-const mountains = new THREE.Mesh(W.mountainGeometry(), vmat); mountains.receiveShadow = true; scene.add(mountains);
+// the mountainside: terraces, retaining walls, slopes, the cliff and plateau (one greedy voxel-column mesh per region)
+function brickTexture() { // tileable dressed-stone courses for the retaining walls (6 × 3 voxels per tile)
+  const c = document.createElement("canvas"); c.width = 48; c.height = 24; const g = c.getContext("2d"); g.fillStyle = "#f2efe8"; g.fillRect(0, 0, 48, 24);
+  g.fillStyle = "#a8a296"; for (let y = 0; y < 24; y += 8) { g.fillRect(0, y, 48, 1); for (let x = (y / 8) % 2 ? 12 : 0; x < 48; x += 24) g.fillRect(x, y, 1, 8); }
+  for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(0,0,0,${0.03 + Math.random() * 0.05})`; g.fillRect(Math.random() * 48, Math.random() * 24, 3, 2); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; t.repeat.set(1, 1); return t;
+}
+const TG = W.terrainGeometry();
+const brickMat = new THREE.MeshLambertMaterial({ map: brickTexture(), vertexColors: true });
+const terrainMain = new THREE.Mesh(TG.main, [new THREE.MeshLambertMaterial({ map: tex }), brickMat, vmat]); terrainMain.receiveShadow = true; terrainMain.castShadow = true; scene.add(terrainMain);
+for (const g of TG.outer) { const m = new THREE.Mesh(g, [vmat, brickMat, vmat]); m.receiveShadow = true; scene.add(m); }
 /** Flat ribbon following f(x) (river, roads) — used to carry the river and roads past the painted ground into the haze. */
 function ribbon(x0, x1, zc, hw, y, color, opts = {}) {
   const pos = [], idx = []; for (let x = x0, i = 0; x <= x1; x += 4, i++) { const z = zc(x); pos.push(x, y, z - hw, x, y, z + hw); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, ...opts })); m.receiveShadow = true; scene.add(m); return m;
 }
-for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) { ribbon(a, b, W.RIVER.zc, W.RIVER.hw + 5, 0.02, "#e8d8a0", layer(2)); ribbon(a, b, W.RIVER.zc, W.RIVER.hw, 0.04, "#3a8ac8", layer(4)); }
 for (const r of W.ROADS) if (r.w > r.d) for (const [a, b] of [[-3000, 0], [W.WX, W.WX + 3000]]) ribbon(a, b, () => r.z + r.d / 2, r.d / 2, 0.03, "#c8a878", layer(3));
 { const r = W.ROADS[0]; const g = new THREE.Mesh(new THREE.PlaneGeometry(r.w, 3000), new THREE.MeshLambertMaterial({ color: "#c8a878", ...layer(3) })); g.rotation.x = -Math.PI / 2; g.position.set(r.x + r.w / 2, 0.03, W.WZ + 1500); scene.add(g); }
-const hills = new THREE.Mesh(W.hillGeometry(L.bumps), vmat); hills.receiveShadow = true; hills.castShadow = true; scene.add(hills);
-// River animation: two faint layers of light glints (additive, scrolling at different speeds and directions)
-// over the translucent water, so the surface shimmers and slowly drifts downstream (+x).
-function glintTexture(seed) {
-  const c = document.createElement("canvas"); c.width = 256; c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0, 0, 256, 64);
-  let t = seed; const r = () => ((t = (t * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 70; i++) { const x = r() * 256, y = r() * 64, w = 6 + r() * 22, a = 0.25 + r() * 0.6; g.fillStyle = `rgba(255,255,255,${a})`;
-    for (const dx of [-256, 0, 256]) for (const dy of [-64, 0, 64]) g.fillRect(Math.round(x + dx), Math.round(y + dy), Math.round(w), 1 + (r() < 0.3 ? 1 : 0)); }
-  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = THREE.NearestFilter; return tex;
-}
-const riverGlints = [];
-{ // translucent river surface (+ glint layers)
-  const pos = [], uv = [], idx = []; for (let x = -3000, i = 0; x <= W.WX + 3000; x += 4, i++) { const zc = W.RIVER.zc(x); pos.push(x, 0.25, zc - W.RIVER.hw, x, 0.25, zc + W.RIVER.hw); uv.push(x / 64, 0, x / 64, 1); if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); } }
-  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-  for (const [seed, y, op, speed, wob] of [[7, 0.32, 0.22, 0.018, 0.8], [91, 0.36, 0.16, -0.009, 1.3]]) {
-    const map = glintTexture(seed); map.repeat.set(1, 0.5);
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -24 }));
-    m.position.y = y - 0.25; m.renderOrder = 2; scene.add(m); riverGlints.push({ map, speed, wob, op, mat: m.material });
-  }
-  const water = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: "#5ab8f0", transparent: true, opacity: 0.4 })); water.receiveShadow = true; scene.add(water);
-}
-
+const water = buildWater(scene, W);
 const geoCache = new Map();
 // Models with walking parts: the ox pulling the ox cart (legs at x 20/26, z 11/16, y 0–4 in the 32-grid; faces +x → k ±3).
 const MODEL_PARTS = { oxcart: (x, y, z) => { if (y > 4 || !((x === 20 || x === 26) && (z === 11 || z === 16))) return null; return [(x === 20) === (z === 11) ? 3 : -3, 5, x + 0.5 - 16]; } };
@@ -208,7 +201,7 @@ function tufts() { // little 3D grass tufts and rice seedlings to break up the f
   const geo = meshVoxels(gridFromVoxels([[8, 0, 8, "#ffffff"], [8, 1, 8, "#ffffff"], [7, 0, 8, "#ffffff"], [9, 0, 9, "#ffffff"]], 16));
   const pts = [];
   for (const p of W.PADDIES) for (let z = p.z + 3; z < p.z + p.d; z += 12) for (let x = p.x + 2; x < p.x + p.w - 2; x += 3) pts.push([x + W.rnd(-0.6, 0.6), z + W.rnd(0, 4), W.pick(["#58c048", "#6cd058", "#48a838"])]);
-  for (let i = 0; i < 16000; i++) { const x = W.rnd(0, W.WX), z = W.rnd(W.RIVER.zc(0) + 20, W.WZ); if (W.occupied(x, z, -6) && !W.inRect(x, z, W.CITY_R)) continue;
+  for (let i = 0; i < 16000; i++) { const x = W.rnd(0, W.WX), z = W.rnd(W.CLIFF_Z + 40, W.WZ); if (W.inRiver(x, z, 2) || (W.occupied(x, z, -6) && !W.inRect(x, z, W.CITY_R))) continue;
     if (W.isStreet(x, z) || W.inRect(x, z, W.PLAZA) || W.inRect(x, z, W.PALACE) || (W.inRect(x, z, W.CITY_R) && !W.isStreet(x, z) && chance3())) continue; pts.push([x, z, W.pick(["#4ea23a", "#62b446", "#3a8430", "#90d866"])]); }
   const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length); const col = new THREE.Color();
   pts.forEach(([x, z, c], i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(c)); });
@@ -217,7 +210,7 @@ function tufts() { // little 3D grass tufts and rice seedlings to break up the f
 const chance3 = () => W.rand() < 0.7;
 function bushes() { // leafy bushes and flower clumps scattered over the countryside
   const vox = []; for (const [x, y, z] of [[7, 0, 7], [8, 0, 7], [9, 0, 7], [7, 0, 8], [8, 0, 8], [9, 0, 8], [8, 0, 9], [7, 0, 9], [8, 1, 7], [8, 1, 8], [7, 1, 8], [9, 1, 8], [8, 2, 8]]) vox.push([x, y, z, "#ffffff"]);
-  const pts = []; for (let i = 0; i < 2600; i++) { const x = W.rnd(-60, W.WX + 60), z = W.rnd(W.RIVER.zc(0) + 24, W.WZ + 40); if (W.occupied(x, z, 2)) continue; pts.push([x, z, W.pick(["#3aa848", "#2e8a3a", "#4cb85a", "#58c060", "#3a9a40", "#f8b8c8", "#f0e060"])]); }
+  const pts = []; for (let i = 0; i < 2600; i++) { const x = W.rnd(-60, W.WX + 60), z = W.rnd(W.CLIFF_Z + 44, W.WZ + 40); if (W.occupied(x, z, 2)) continue; pts.push([x, z, W.pick(["#3aa848", "#2e8a3a", "#4cb85a", "#58c060", "#3a9a40", "#f8b8c8", "#f0e060"])]); }
   const im = new THREE.InstancedMesh(meshVoxels(gridFromVoxels(vox, 16)), new THREE.MeshLambertMaterial({ vertexColors: true }), pts.length), col = new THREE.Color();
   pts.forEach(([x, z, c], i) => { const sc = W.rnd(0.7, 1.5); Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(x, W.groundH(x, z), z), Q, SC.set(sc, sc * W.rnd(0.7, 1.1), sc))); im.setColorAt(i, col.set(c)); });
   im.castShadow = true; im.receiveShadow = true; scene.add(im); groundCover.push({ im, pts });
@@ -227,7 +220,7 @@ function crops() { // 3D crop rows on the farm fields: cabbages and wheat
   const col = new THREE.Color();
   for (const [k, [vox, cols]] of Object.entries(kinds)) { const list = L.crops.filter((c) => c.kind === k); if (!list.length) continue;
     const im = new THREE.InstancedMesh(meshVoxels(gridFromVoxels(vox.map((v) => [...v, "#ffffff"]), 16)), new THREE.MeshLambertMaterial({ vertexColors: true }), list.length);
-    list.forEach((c, i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(c.x, 0, c.z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(W.pick(cols))); });
+    list.forEach((c, i) => { Q.setFromAxisAngle(UP, W.rnd(0, 6.28)); im.setMatrixAt(i, M4.compose(V.set(c.x, W.groundH(c.x, c.z), c.z), Q, SC.set(1, 1, 1))); im.setColorAt(i, col.set(W.pick(cols))); });
     im.receiveShadow = true; im.castShadow = k === "wheat"; scene.add(im); }
 }
 
@@ -295,7 +288,7 @@ async function bakeSkyOcclusion() {
   const tops = new Map();
   for (const st of L.statics) if (!tops.has(st.model)) { const g = await loadModel(st.model); tops.set(st.model, { tops: columnTops(g), size: g.size }); }
   const M = 90, rect = { x: W.CITY.x0 - M, z: W.CITY.z0 - M, w: W.CITY.x1 - W.CITY.x0 + 2 * M, d: W.CITY.z1 - W.CITY.z0 + 2 * M };
-  const ao = bakeSkyAO(heightMap(L.statics.map((st) => ({ ...st, ...tops.get(st.model) })), rect, 2)); occAt = sampler(ao);
+  const ao = bakeSkyAO(heightMap(L.statics.map((st) => ({ ...st, ...tops.get(st.model) })), rect, 2, W.terrainH)); occAt = sampler(ao);
   // multiply a soft, cool shadow layer into the painted ground (bilinear upscale from the 2-unit bake)
   const c = document.createElement("canvas"); c.width = ao.nx; c.height = ao.nz; const g = c.getContext("2d"), img = g.createImageData(ao.nx, ao.nz);
   for (let k = 0; k < ao.occ.length; k++) { const d = aoDark(ao.occ[k]) * 0.65; AOC.copy(WHITE).lerp(AO_TINT, d); img.data[k * 4] = AOC.r * 255; img.data[k * 4 + 1] = AOC.g * 255; img.data[k * 4 + 2] = AOC.b * 255; img.data[k * 4 + 3] = 255; }
@@ -342,12 +335,15 @@ async function buildNight() {
   const pole = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 4, 0.7), new THREE.MeshLambertMaterial({ color: "#3a2618" }), torches.length);
   const flameMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.1, 0.35), fog: false, transparent: true, opacity: 0 });
   const flame = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1.6, 1.4), flameMat, torches.length); flame.visible = false;
-  torches.forEach(([x, z, y], i) => { pole.setMatrixAt(i, M4.makeTranslation(x, y + 2, z)); flame.setMatrixAt(i, M4.makeTranslation(x, y + 4.8, z)); lights.push({ x, z, kind: y ? "torch" : "brazier" }); });
+  torches.forEach(([x, z, yr], i) => { const y = yr + W.terrainH(x, z); pole.setMatrixAt(i, M4.makeTranslation(x, y + 2, z)); flame.setMatrixAt(i, M4.makeTranslation(x, y + 4.8, z)); lights.push({ x, z, kind: y ? "torch" : "brazier" }); });
   scene.add(pole, flame); glowMats.push({ mat: flameMat, im: flame, opacityMode: true });
   // the light map covers the whole world
   const rect = { x: 0, z: 0, w: W.WX, d: W.WZ }, lm = new THREE.CanvasTexture(lightMapCanvas(lights, rect, 2));
   lm.flipY = false; lm.colorSpace = THREE.NoColorSpace; lm.minFilter = THREE.LinearFilter; lm.generateMipmaps = false;
   nightU.uLightMap.value = lm; nightU.uLightRect.value.set(rect.x, rect.z, rect.w, rect.d);
+  { const gw = Math.ceil(rect.w / 4), gd = Math.ceil(rect.d / 4), gd8 = new Uint8Array(gw * gd);   // ground height (÷256) so light heights are relative to the terrain
+    for (let j = 0; j < gd; j++) for (let i = 0; i < gw; i++) gd8[j * gw + i] = Math.min(255, W.terrainH(rect.x + i * 4 + 2, rect.z + j * 4 + 2));
+    const gt = new THREE.DataTexture(gd8, gw, gd, THREE.RedFormat, THREE.UnsignedByteType); gt.minFilter = gt.magFilter = THREE.LinearFilter; gt.needsUpdate = true; nightU.uGroundMap.value = gt; }
   sky = nightSky(new THREE.Vector3(-260, 420, 220)); scene.add(sky.group);
   sunMoon = celestial(new THREE.Vector3(-260, 420, 220)); scene.add(sunMoon.group);
   city.nightLights = lights.length;
@@ -365,7 +361,9 @@ function applyNight(n) {
 }
 
 let wheel = null;
-async function buildWheel() { wheel = new THREE.Mesh(await modelGeometry("waterwheel", null, "waterwheel"), vmat); wheel.castShadow = true; wheel.position.set(L.WHEEL.x, 10, W.RIVER.zc(L.WHEEL.x) - 3); scene.add(wheel); }
+async function buildWheel() { // the mill wheel stands in the south-flowing river: its plane is y–z, turning about x
+  const holder = new THREE.Group(); holder.position.set(L.WHEEL.x + 2, 10, L.WHEEL.z); holder.rotation.y = Math.PI / 2; scene.add(holder);
+  wheel = new THREE.Mesh(await modelGeometry("waterwheel", null, "waterwheel"), vmat); wheel.castShadow = true; holder.add(wheel); }
 
 const HIDE = new THREE.Vector3(0, 0, 0);
 function place(a, x, y, z, yaw, scale) { Q.setFromAxisAngle(UP, yaw); a._mesh.setMatrixAt(a._slot, M4.compose(V.set(x, y, z), Q, scale ? SC.set(scale, scale, scale) : HIDE)); }
@@ -376,7 +374,8 @@ function updateActors(dt) {
     e.hp += moved * (e.kind === "vehicle" ? 0.5 : 0.75);
     if (e.kind === "vehicle") e.roll = (e.roll ?? 0) + moved / (e.scale ?? 1);
     const hop = e.mv ? Math.abs(Math.sin(e.hp)) * e.hop * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;   // slower walkers bob less
-    place(e, e.x, (e.y || 0) + (e.brain === "field" ? W.groundH(e.x, e.z) : 0) + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
+    e.ry = e.absY ?? W.groundH(e.x, e.z) + (e.y || 0);   // riders of the gondola / lift carry an absolute height
+    place(e, e.x, e.ry + hop, e.z, e.kind === "vehicle" ? e.yaw - Math.PI / 2 : e.yaw, e.scale ?? 1);
     const wk = e._mesh.userData.walk;
     if (wk) { // legs pass on landing, spread at the top of each hop; eases in/out as they start and stop walking
       const target = e.mv ? (e.kind === "person" ? 0.4 : e.kind === "vehicle" ? 0.38 : e.kind === "cow" ? 0.35 : 0.55) * Math.min(1, 0.35 + (e.spd ?? e.speed) / e.speed * 0.65) : 0;
@@ -386,20 +385,20 @@ function updateActors(dt) {
     e._mesh.setColorAt(e._slot, aoTint(e, e.y || 0));
   }
   for (const g of sim.pigeons) { // folded on the ground; flying birds alternate the wings-up / wings-down meshes
-    const fly = g.state === "fly", flap = Math.sin(sim.time * 14 + g.phase), y = g.y + (fly ? Math.abs(flap) * 0.6 : 0), main = g._mesh;
+    const fly = g.state === "fly", flap = Math.sin(sim.time * 14 + g.phase), main = g._mesh;
+    const base = fly ? (g.b0 ?? 0) + ((g.b1 ?? 0) - (g.b0 ?? 0)) * Math.min(1, g.ft) : W.groundH(g.x, g.z), y = base + g.y + (fly ? Math.abs(flap) * 0.6 : 0);
     const show = fly ? g._poses[flap > 0 ? 0 : 1] : main;
     for (const m of [main, ...g._poses]) { g._mesh = m; place(g, g.x, y, g.z, g.yaw, m === show ? 1 : 0); }
-    show.setColorAt(g._slot, aoTint(g, y));
+    show.setColorAt(g._slot, aoTint(g, y - base));
     g._mesh = main;
   }
-  for (const b of sim.boats) place(b, b.x, -0.6 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
-  for (const d of sim.ducks) place(d, d.x, -0.2 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
+  for (const b of sim.boats) place(b, b.x, W.RIVER.y(b.z) - 0.85 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
+  for (const d of sim.ducks) place(d, d.x, W.RIVER.y(d.z) - 0.45 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
   for (const im of actorMeshes.values()) { im.instanceMatrix.needsUpdate = true; if (im.userData.walk) im.userData.walk.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
-  updateVehicleWheels();
+  updateVehicleWheels(); water.update(sim.time);
   if (night !== nightTarget) { night += (nightTarget - night) * Math.min(1, dt * 1.6); if (Math.abs(nightTarget - night) < 0.004) night = nightTarget; applyNight(night); }
   if (sky) sky.group.position.copy(camera.position);
   if (sunMoon) sunMoon.group.position.copy(camera.position);
-  for (const [i, gl] of riverGlints.entries()) { gl.map.offset.x -= gl.speed * dt * 4; gl.map.offset.y = Math.sin(sim.time * 0.35 * gl.wob + i) * 0.06; gl.mat.opacity = gl.op * (0.8 + 0.2 * Math.sin(sim.time * gl.wob * 1.7 + i * 2)); }
   if (wheel) wheel.rotation.z = -sim.time * 0.8;
 }
 
@@ -417,7 +416,7 @@ function pickAt(sx, sy) {
   const hit = ray.intersectObjects(pickables, false)[0]; return hit ? hit.object.userData.actors[hit.instanceId] : null;
 }
 city.pickAt = pickAt;
-city.screenOf = (e) => { const v = new THREE.Vector3(e.x, (e.y || 0) + 4, e.z).project(camera); return [Math.round((v.x + 1) / 2 * innerWidth), Math.round((1 - v.y) / 2 * innerHeight)]; };
+city.screenOf = (e) => { const v = new THREE.Vector3(e.x, (e.ry ?? e.y ?? 0) + 4, e.z).project(camera); return [Math.round((v.x + 1) / 2 * innerWidth), Math.round((1 - v.y) / 2 * innerHeight)]; };
 city.world = W; city.layout = L; city.camera = camera; city.controls = controls; city.scene = scene;
 const keys = new Set(); addEventListener("keydown", (e) => { keys.add(e.key.toLowerCase()); if (e.key === "Escape") { followed = null; updateInfo(); } }); addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 function keyPan(dt) {
@@ -434,10 +433,10 @@ city.follow = (e) => { followed = typeof e === "number" ? sim.ents[e] : e; updat
 const clock = new THREE.Clock(); let infoT = 0, fpsN = 0, fpsT = 0;
 function frame(dt, render = true) {
   sim.step(dt); updateActors(dt); keyPan(dt);
-  if (followed) { const t = new THREE.Vector3(followed.x, (followed.y || 0) + 5, followed.z), d = t.sub(controls.target).multiplyScalar(Math.min(1, dt * 4)); controls.target.add(d); camera.position.add(d); }
+  if (followed) { const t = new THREE.Vector3(followed.x, (followed.ry ?? followed.y ?? 0) + 5, followed.z), d = t.sub(controls.target).multiplyScalar(Math.min(1, dt * 4)); controls.target.add(d); camera.position.add(d); }
   controls.target.x = Math.max(-100, Math.min(W.WX + 100, controls.target.x)); controls.target.z = Math.max(-100, Math.min(W.WZ + 100, controls.target.z));
   controls.update();
-  const T = controls.target; sun.target.position.set(Math.round(T.x / 4) * 4, 0, Math.round(T.z / 4) * 4); sun.position.copy(sun.target.position).add(V.set(-260, 420, 220));
+  const T = controls.target; sun.target.position.set(Math.round(T.x / 4) * 4, Math.round(T.y), Math.round(T.z / 4) * 4); sun.position.copy(sun.target.position).add(V.set(-260, 420, 220));
   const dist = camera.position.distanceTo(T); distFocus.value = Math.max(60, dist);   // what you're looking at stays bright; beyond it darkens const ext = Math.max(120, Math.min(420, dist * 0.75)); Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext }); sun.shadow.camera.updateProjectionMatrix();
   if (render) draw();
   infoT += dt; if (infoT > 0.3) { infoT = 0; if (followed) updateInfo(); const s = sim.stats(); census.innerHTML = `Out &amp; about: ${s.outside}<br>Indoors: ${s.inside}<br>Carts &amp; chairs: ${s.vehicles}`; }

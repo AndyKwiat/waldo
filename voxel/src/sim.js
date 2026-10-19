@@ -1,7 +1,7 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
+import { groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 // ---- navigation graph from the world's street network: pedestrians use streets + alleys, vehicles streets only
@@ -240,7 +240,7 @@ export function createSim(W) {
     if (e.band === "paddy") { const f = pick(FARMS); return { x: f.x, z: f.z }; }
     if (e.home2) { const a = rnd(0, 6.28), r = rnd(e.r0 ?? 20, e.r1 ?? 70); return { x: e.home2.x + Math.cos(a) * r, z: e.home2.z + Math.sin(a) * r }; }
     if (e.band === "fields") { const f = pick(FIELDS); return { x: rnd(f.x, f.x + f.w), z: rnd(f.z, f.z + f.d) }; }
-    let x, z, n = 0; do { x = rnd(20, WX - 20); z = rnd(RIVER.zc(x) + RIVER.hw + 12, WZ - 20); } while (occupied(x, z, 4) && ++n < 30); return { x, z }; }
+    let x, z, n = 0; do { x = rnd(20, WX - 20); z = rnd(CLIFF_Z + 60, WZ - 20); } while (occupied(x, z, 4) && ++n < 30); return { x, z }; }
   for (let i = 0; i < 49; i++) { const p = lookFor(pick(["farmer", "farmer", "farmer", "porter", "kid", "lady", "plain"])), band = i % 3 === 0 ? "fields" : i % 3 === 1 ? "meadow" : "hamlet";
     field({ kind: "person", look: p, brain: "field", band, home2: band === "hamlet" ? pick(HAMLETS) : null, r0: 10, r1: 60, name: pick(FAMS) + " " + pick(GIVEN), title: band === "hamlet" ? "Villager" : TITLES[p.arch], activity: band === "fields" ? "tending the crops" : band === "hamlet" ? "doing chores in the village" : "wandering the countryside", pauseChance: 0.5, cr: 2.4, scale: p.kid ? 0.72 : 1 }); }
   for (const H of HAMLETS) { for (let i = 0; i < 4; i++) field({ kind: "cow", look: { animal: "cow", variant: pick(["spotted", "#8a5a32", "#c8a070"]) }, brain: "field", home2: { x: H.x + rnd(-40, 40), z: H.z + rnd(70, 110) }, r0: 0, r1: 28, speed: rnd(2, 4), cr: 3, hop: 0.4, pauseChance: 0.8, name: pick(PETNAMES), title: "Cow", activity: "grazing" });
@@ -251,10 +251,11 @@ export function createSim(W) {
   for (let i = 0; i < 0; i++) field({ kind: "pig", look: { animal: "pig", variant: 0 }, brain: "field", speed: rnd(4, 7), cr: 2.2, hop: 0.6, pauseChance: 0.6, name: "Pig", title: "", activity: "rooting in the mud" });
   for (let i = 0; i < 12; i++) field({ kind: "crane", look: { animal: "crane", variant: 0 }, band: "paddy", brain: "field", speed: rnd(3, 5), cr: 1.2, hop: 0.4, pauseChance: 0.8, name: "Crane", title: "", activity: "wading in the paddies" });
   // river folk: fishers on docks and banks, strollers along the south bank
-  const bankZ = (x) => RIVER.zc(x) + RIVER.hw + 3;
-  for (const dx of W.DOCKS) for (const ox of [-2, 2]) { const f = person(pick(["farmer", "plain", "kid"]), { brain: "idle", w8: 0.05, activity: "fishing off the dock", title: "Fisher", y: 1 }, (p) => { p.item = "rod"; }); at(f, dx + ox, RIVER.zc(dx) + 2); f.yaw = Math.PI; }
-  for (let i = 0; i < 8; i++) { const x = rnd(40, WX - 40); if (Math.abs(x - W.WHEEL.x) < 30) continue; const f = person(pick(["farmer", "plain", "scholar"]), { brain: "idle", w8: 0.05, activity: "fishing in the river", title: "Fisher" }, (p) => { p.item = "rod"; }); at(f, x, bankZ(x)); f.yaw = Math.PI; }
-  for (let i = 0; i < 7; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), speed: rnd(6, 9), activity: "strolling along the river" }); const x = rnd(30, WX - 30); at(e, x, bankZ(x) + e.off); }
+  // river folk on the lowland stretch south of the city (the river flows south there): z from LOW0 to LOW1
+  const LOW0 = CITY.z1 + 60, LOW1 = WZ - 30, bankX = (z, side = 1) => RIVER.x(z) + side * (RIVER.halfW(z) + 3);
+  for (const dz of W.DOCKS) for (const oz of [-2, 2]) { const f = person(pick(["farmer", "plain", "kid"]), { brain: "idle", w8: 0.05, activity: "fishing off the dock", title: "Fisher", y: 1 }, (p) => { p.item = "rod"; }); at(f, RIVER.x(dz) + RIVER.halfW(dz) - 1, dz + oz); f.yaw = -Math.PI / 2; }
+  for (let i = 0; i < 8; i++) { const z = rnd(LOW0, LOW1); if (Math.abs(z - W.WHEEL.z) < 30) continue; const side = chance(0.5) ? 1 : -1, f = person(pick(["farmer", "plain", "scholar"]), { brain: "idle", w8: 0.05, activity: "fishing in the river", title: "Fisher" }, (p) => { p.item = "rod"; }); at(f, bankX(z, side), z); f.yaw = side > 0 ? -Math.PI / 2 : Math.PI / 2; }
+  for (let i = 0; i < 7; i++) { const e = person(pick(["lady", "plain", "scholar", "kid", "monk"]), { brain: "bank", off: rnd(0, 4), side: chance(0.5) ? 1 : -1, speed: rnd(6, 9), activity: "strolling along the river" }); const z = rnd(LOW0, LOW1); at(e, bankX(z, e.side) + e.side * e.off, z); }
 
   for (const e of ents) { if (e.kind === "vehicle") { e.turn = e.look.model === "barrow" ? 2.2 : 1.1; e.head = e.yaw; } else if (["cow", "pig", "sheep"].includes(e.kind)) { e.turn = 1.4; e.head = e.yaw; } }
   // ambient: pigeons, boats, ducks (no collisions)
@@ -274,8 +275,9 @@ export function createSim(W) {
     const h = HAUNTS[home]; return { x: h.x + rnd(-7, 7), z: h.z + rnd(-7, 7) }; };
   const pigeons = [];
   for (let i = 0; i < 70; i++) { const home = i < 9 ? "statue" : i < 33 ? (i - 9) % HAUNTS.length : "plaza", s = pigeonSpot({ home }); pigeons.push({ home, look: { animal: "pigeon", variant: rndi(0, 3) }, x: s.x, z: s.z, y: s.y ?? 0, gy: s.y ?? 0, perch: !!s.perch, yaw: rnd(0, 6.28), state: "ground", timer: rnd(0, 4), phase: rand() * 9 }); }
-  const boats = []; for (let i = 0; i < 10; i++) boats.push({ look: { model: "boat" }, x: rnd(0, WX), vx: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-5, 5), phase: rand() * 9 });
-  const ducks = []; for (let fl = 0; fl < 5; fl++) { const x0 = rnd(0, WX), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-7, 7); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
+  const BOAT0 = CITY.z1 + 40, BOATL = WZ + 600 - BOAT0;   // boats and ducks keep to the lowland river
+  const boats = []; for (let i = 0; i < 7; i++) boats.push({ look: { model: "boat" }, z: rnd(BOAT0, WZ), x: 0, vz: rnd(3, 6) * (chance(0.5) ? 1 : -1), lane: rnd(-4, 4), phase: rand() * 9 });
+  const ducks = []; for (let fl = 0; fl < 5; fl++) { const x0 = rnd(0, BOATL), dir = chance(0.5) ? 1 : -1, sp = rnd(1.5, 3), lane = rnd(-6, 6); for (let k = 0; k < 5; k++) ducks.push({ look: { animal: "duck", variant: k === 0 ? 0 : rndi(0, 2) }, x0, k, dir, sp, lane, phase: rand() * 6 }); }
 
   // ---- behaviour
   const LOOK = 7;
@@ -339,8 +341,8 @@ export function createSim(W) {
     field(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { e.path = [fieldPt(e)]; e.pi = 0; } if (walkPath(e, dt) && chance(e.pauseChance ?? 0.4)) e.pause = rnd(1, 5); },
     yard(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { const y = e.yard; e.path = [{ x: rnd(y.x, y.x + y.w), z: rnd(y.z, y.z + y.d) }]; e.pi = 0; } if (walkPath(e, dt) && chance(0.5)) e.pause = rnd(1, 6); },
     pace(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.pt === undefined) e.pt = rnd(e.a0, e.a1); if (e.ax === "z" ? stepToward(e, e.fixed, e.pt, e.speed, dt) : stepToward(e, e.pt, e.fixed, e.speed, dt)) { e.pt = rnd(e.a0, e.a1); e.pause = rnd(1, 6); } },
-    bank(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.bt === undefined) e.bt = Math.max(30, Math.min(WX - 30, e.x + rnd(-150, 150))); const dx = e.bt - e.x; if (Math.abs(dx) < 1) { e.bt = undefined; e.pause = rnd(1, 6); return; }
-      e.x += Math.sign(dx) * Math.min(e.speed * dt, Math.abs(dx)); e.z = bankZ(e.x) + e.off; e.face = dx > 0 ? Math.PI / 2 : -Math.PI / 2; e.mv = true; },
+    bank(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.bt === undefined) e.bt = Math.max(LOW0, Math.min(LOW1, e.z + rnd(-150, 150))); const dz = e.bt - e.z; if (Math.abs(dz) < 1) { e.bt = undefined; e.pause = rnd(1, 6); return; }
+      e.z += Math.sign(dz) * Math.min(e.speed * dt, Math.abs(dz)); e.x = bankX(e.z, e.side) + e.side * e.off; e.face = dz > 0 ? 0 : Math.PI; e.mv = true; },
   };
 
   // collisions: foot circles push apart (standing / heavy things barely move), walkers sidestep right; props are solid
@@ -388,12 +390,12 @@ export function createSim(W) {
       if (g.state === "ground") { g.timer -= dt; g.y = g.gy ?? 0;
         if ((!g.perch && anyoneNear(g.x, g.z, 4)) || (g.timer < 0 && chance(g.perch ? 0.012 : 0.002))) { let s, tries = 0; do { s = pigeonSpot(g); } while ((Math.hypot(s.x - g.x, s.z - g.z) > 140 || (!s.perch && !g.perch && crossesStatue(g.x, g.z, s.x, s.z))) && ++tries < 16);
           if (!s.perch && !g.perch && crossesStatue(g.x, g.z, s.x, s.z)) { const a = Math.atan2(g.z - STATUE.z, g.x - STATUE.x) + rnd(-0.5, 0.5), r = Math.max(36, Math.hypot(g.x - STATUE.x, g.z - STATUE.z) + rnd(4, 14)); s = { x: STATUE.x + Math.cos(a) * r, z: STATUE.z + Math.sin(a) * r }; }   // never fly through the statue
-          Object.assign(g, { state: "fly", hx: undefined, fx: g.x, fz: g.z, fy: g.gy ?? 0, ty: s.y ?? 0, tPerch: !!s.perch, tx: s.x, tz: s.z, ft: 0, fd: Math.max(0.8, Math.hypot(s.x - g.x, s.z - g.z) / 30) }); g.yaw = Math.atan2(s.x - g.x, s.z - g.z); }
+          Object.assign(g, { state: "fly", hx: undefined, b0: groundH(g.x, g.z), b1: groundH(s.x, s.z), fx: g.x, fz: g.z, fy: g.gy ?? 0, ty: s.y ?? 0, tPerch: !!s.perch, tx: s.x, tz: s.z, ft: 0, fd: Math.max(0.8, Math.hypot(s.x - g.x, s.z - g.z) / 30) }); g.yaw = Math.atan2(s.x - g.x, s.z - g.z); }
         else if (!g.perch) { if (g.timer < 0) { g.timer = rnd(1, 4); g.hx = g.x + rnd(-5, 5); g.hz = g.z + rnd(-5, 5); if (onStatue(g.hx, g.hz, 6)) g.hx = undefined; } if (g.hx !== undefined) { const dx = g.hx - g.x, dz = g.hz - g.z, d = Math.hypot(dx, dz); if (d > 0.3) { g.x += (dx / d) * Math.min(d, 4 * dt); g.z += (dz / d) * Math.min(d, 4 * dt); g.yaw = Math.atan2(dx, dz); } else g.hx = undefined; } } }
       if (g.state === "fly") { g.ft += dt / g.fd; const k = Math.min(1, g.ft); g.x = g.fx + (g.tx - g.fx) * k; g.z = g.fz + (g.tz - g.fz) * k; g.y = (g.fy ?? 0) + ((g.ty ?? 0) - (g.fy ?? 0)) * k + Math.sin(Math.PI * k) * Math.min(30, 8 + g.fd * 6); if (k >= 1) { g.state = "ground"; g.timer = rnd(2, 6); g.gy = g.ty ?? 0; g.perch = !!g.tPerch; } }
     }
-    for (const b of boats) { b.x += b.vx * dt; if (b.x < -500) b.x = WX + 500; if (b.x > WX + 500) b.x = -500; b.z = RIVER.zc(b.x) + b.lane; b.yaw = b.vx > 0 ? 0 : Math.PI; }
-    for (const d of ducks) { const lx = (((d.x0 + d.dir * d.sp * T) % (WX + 600)) + (WX + 600)) % (WX + 600) - 300; d.x = lx - d.dir * d.k * 3.5; d.z = RIVER.zc(d.x) + d.lane + Math.sin(T * 1.3 + d.k) * 0.6; d.yaw = d.dir > 0 ? Math.PI / 2 : -Math.PI / 2; }
+    for (const b of boats) { b.z += b.vz * dt; if (b.z < BOAT0) { b.z = BOAT0; b.vz = Math.abs(b.vz); } if (b.z > WZ + 600) b.z = BOAT0 + 2; const hw = RIVER.halfW(b.z) - 4; b.x = RIVER.x(b.z) + Math.max(-hw, Math.min(hw, b.lane)); b.yaw = b.vz > 0 ? -Math.PI / 2 : Math.PI / 2; }
+    for (const d of ducks) { const lz = (((d.x0 + d.dir * d.sp * T) % BOATL) + BOATL) % BOATL + BOAT0; d.z = lz - d.dir * d.k * 3.5; d.x = RIVER.x(d.z) + d.lane * RIVER.halfW(d.z) / 10 + Math.sin(T * 1.3 + d.k) * 0.6; d.yaw = d.dir > 0 ? 0 : Math.PI; }
   }
   const stats = () => { let out = 0, inside = 0; for (const e of ents) if (e.kind === "person") { if (e.hidden) inside++; else out++; } return { outside: out, inside, vehicles: ents.filter((e) => e.kind === "vehicle").length, actors: ents.length + pigeons.length + boats.length + ducks.length }; };
   return { ents, pigeons, boats, ducks, step, stats, get time() { return T; } };

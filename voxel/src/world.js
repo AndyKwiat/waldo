@@ -56,6 +56,9 @@ const MAIN_ROWS = new Set([0, 3, PLAZA_R, PLAZA_R + 1, ROWS]), MAIN_COLS = new S
 const touchesSpecial = (cells) => cells.some(([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS && isSpecialBlock(c, r));
 for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "street" && !MAIN_ROWS.has(r) && !touchesSpecial([[c, r - 1], [c, r]]) && lr() < 0.38) HSEG[r][c] = "alley";
 for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (VSEG[c][r] === "street" && !MAIN_COLS.has(c) && !touchesSpecial([[c - 1, r], [c, r]]) && lr() < 0.32) VSEG[c][r] = "garden";
+// the river runs down the middle of the city in a stone channel along street column RIVER_C (no north–south street there)
+export const RIVER_C = 5, RX = SX[RIVER_C];
+for (let r = 0; r < ROWS; r++) VSEG[RIVER_C][r] = "river";
 // winding centre line of an alley (stays inside its 22-wide strip)
 const ALLEY_PH = HSEG.map((row, r) => row.map((_, c) => lr() * 6.28));
 export function alleyZ(r, c, x) { const a = SX[c] + STREET / 2, b = SX[c + 1] - STREET / 2, t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -89,10 +92,38 @@ export const isStreet = (x, z) => { const k = cellAt(x, z); return k === "street
 // walls: 24 tall, 9 deep, just outside the outer street ring; walkway centres (where sentries walk):
 export const WALL = { h: 24, n: CITY.z0 - 5, s: CITY.z1 + 5, w: CITY.x0 - 5, e: CITY.x1 + 5 };
 export const WALL_S = WALL.s;
-// river north of the city (runs off both edges of the world), paddies + roads + farms + hamlets outside
-export const RIVER = { zc: (x) => 158 + 10 * Math.sin(x / 120) + 5 * Math.sin(x / 37), hw: 15 };
+// ---- the mountain: the city climbs the mountainside in terraces (south = the gate, low; north = the palace, high).
+// Every east–west street line r sits at level LV[r]; inside a block the step down to the next street happens at the
+// block's middle (a stone retaining wall), north–south streets climb it as stairs. North of the city a shelf at the top
+// level holds a pool, then a sheer cliff up to the mountain plateau; the river falls off it, runs through the city in a
+// channel with a waterfall at every terrace, and leaves under the south wall into the lowland paddies.
+export const LV = [118, 118, 118, 118, 88, 88, 60, 34, 10];
+export const CLIFF_Z = CITY.z0 - 95, PLATEAU = 196, POOL = { x: RX, z: CLIFF_Z + 34, r: 26 };
+const sstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+/** Terrace level for any z in the city band (steps at block middles). */
+export function levelAt(z) {
+  if (z <= SZ[0]) return LV[0]; if (z >= SZ[ROWS]) return LV[ROWS];
+  let r = 0; while (r < ROWS - 1 && z >= SZ[r + 1]) r++;
+  return z < (SZ[r] + SZ[r + 1]) / 2 ? LV[r] : LV[r + 1];
+}
+/** Smooth slope through the street levels (countryside east/west of the city). */
+function slopeAt(z) {
+  if (z <= SZ[0]) return LV[0]; if (z >= CITY.z1 + 40) return 0;
+  if (z >= SZ[ROWS]) return LV[ROWS] * (1 - (z - SZ[ROWS]) / (CITY.z1 + 40 - SZ[ROWS]));
+  let r = 0; while (r < ROWS - 1 && z >= SZ[r + 1]) r++;
+  return LV[r] + (LV[r + 1] - LV[r]) * sstep((z - SZ[r]) / (SZ[r + 1] - SZ[r]));
+}
+/** The river's centre line x and half-width at z (it runs north → south). */
+export const RIVER = {
+  hw: 9,
+  x: (z) => (z <= CITY.z1 + 20 ? RX : RX + 46 * Math.sin((z - CITY.z1 - 20) / 110) * sstep((z - CITY.z1 - 20) / 80) + 14 * Math.sin((z - CITY.z1) / 41) * sstep((z - CITY.z1 - 20) / 120)),
+  halfW: (z) => (z <= CITY.z1 + 20 ? 9 : 9 + 5 * sstep((z - CITY.z1 - 20) / 60)),
+  /** water surface height */
+  y: (z) => (z < CLIFF_Z ? PLATEAU - 3 : z < CITY.z0 - 6 ? LV[0] - 3 : z <= CITY.z1 + 6 ? Math.max(0.25, levelAt(z) - 4) : z < CITY.z1 + 30 ? Math.max(0.25, 6 * (1 - (z - CITY.z1 - 6) / 24)) : 0.25),
+};
+export const inRiver = (x, z, m = 0) => z > -400 && Math.abs(x - RIVER.x(z)) < RIVER.halfW(z) + m;
 export const ROADS = [{ x: GATE_X - 9, z: CITY.z1, w: 18, d: 4000 }, { x: -4000, z: CITY.z1 + 205, w: 8000, d: 14 }];
-export const PADDIES = [{ x: GATE_X - 340, z: CITY.z1 + 34, w: 310, d: 150 }, { x: GATE_X + 30, z: CITY.z1 + 34, w: 310, d: 150 }];
+export const PADDIES = [{ x: GATE_X - 340, z: CITY.z1 + 40, w: 310, d: 150 }, { x: GATE_X + 26, z: CITY.z1 + 40, w: SX[5] - GATE_X - 70, d: 150 }, { x: SX[5] + 70, z: CITY.z1 + 40, w: 250, d: 150 }];
 export const FIELDS = [
   { x: 60, z: CITY.z0 + 10, w: 120, d: 90, crop: "cabbage" }, { x: 210, z: CITY.z0 + 40, w: 110, d: 120, crop: "wheat" }, { x: 70, z: CITY.z0 + 330, w: 150, d: 100, crop: "wheat" }, { x: 90, z: CITY.z0 + 560, w: 160, d: 110, crop: "cabbage" },
   { x: CITY.x1 + 70, z: CITY.z0 + 20, w: 130, d: 100, crop: "wheat" }, { x: CITY.x1 + 230, z: CITY.z0 + 170, w: 120, d: 110, crop: "cabbage" }, { x: CITY.x1 + 80, z: CITY.z0 + 380, w: 140, d: 90, crop: "cabbage" }, { x: CITY.x1 + 210, z: CITY.z0 + 600, w: 130, d: 100, crop: "wheat" },
@@ -104,7 +135,8 @@ export const HAMLETS = [{ x: 150, z: CITY.z0 + 230 }, { x: CITY.x1 + 210, z: CIT
 export function occupied(x, z, m = 0) {
   if (onStatue(x, z, m)) return true;
   if (inRect(x, z, CITY_R, m)) return true;
-  if (Math.abs(z - RIVER.zc(x)) < RIVER.hw + 10 + m) return true;
+  if (z > CLIFF_Z && inRiver(x, z, 10 + m)) return true;
+  if (z < CLIFF_Z + 40 && z > CLIFF_Z - 10) return true;   // the cliff and the shelf below it
   return ROADS.some((r) => inRect(x, z, r, m + 2)) || PADDIES.some((p) => inRect(x, z, p, m + 3)) || FIELDS.some((f) => inRect(x, z, f, m + 3)) || HAMLETS.some((h) => Math.hypot(x - h.x, z - h.z) < 62 + m);
 }
 
@@ -112,14 +144,72 @@ export function occupied(x, z, m = 0) {
 const BUMPS = [];
 function placeBumps() {
   for (let tries = 0; BUMPS.length < 30 && tries < 6000; tries++) {
-    const r = rnd(28, 70), h = rnd(9, 22), x = rnd(-60, WX + 60), z = rnd(RIVER.zc(0) + 30, WZ + 60);
+    const r = rnd(28, 70), h = rnd(9, 22), x = rnd(-60, WX + 60), z = rnd(CLIFF_Z + 60, WZ + 60);
     if (occupied(x, z, r * 1.25)) continue; BUMPS.push({ x, z, r, h });
   }
 }
+// flat pads under countryside features (fields, hamlets, paddies) so they don't sit on the slope
+let PADS = null;
+function pads() {
+  if (PADS) return PADS;
+  PADS = [...FIELDS.map((f) => ({ x0: f.x - 6, z0: f.z - 6, x1: f.x + f.w + 6, z1: f.z + f.d + 6 })), ...HAMLETS.map((h) => ({ x0: h.x - 80, z0: h.z - 70, x1: h.x + 80, z1: h.z + 70 }))]
+    .map((p) => ({ ...p, h: Math.round(slopeAt((p.z0 + p.z1) / 2)) }));
+  return PADS;
+}
+function bumpsAt(x, z) { let h = 0; for (const b of BUMPS) { const d2 = ((x - b.x) ** 2 + (z - b.z) ** 2) / (b.r * b.r); if (d2 < 4) h += b.h * Math.exp(-d2 * 1.6); } return h; }
+/** City terrace height (no river): street lines flat, block halves at their street's level, stairs on north–south streets. */
+function cityH(x, z) {
+  const pb = block(...PAGODA_BLOCK);
+  if (x >= pb.x - 1 && x <= pb.x + pb.w + 1 && z >= pb.z - 1 && z <= pb.z + pb.d + 1) return LV[PAGODA_BLOCK[1] + 1];
+  if (z > SZ[0] + STREET / 2 && z < SZ[ROWS] - STREET / 2) {
+    let r = 0; while (r < ROWS - 1 && z >= SZ[r + 1]) r++;
+    const top = LV[r], bot = LV[r + 1], d = top - bot;
+    if (d > 0 && Math.abs(z - SZ[r]) > STREET / 2 && Math.abs(z - SZ[r + 1]) > STREET / 2) for (let c = 0; c <= COLS; c++) {
+      if (VSEG[c][r] !== "street" || Math.abs(x - SX[c]) >= STREET / 2) continue;   // garden strips step at the middle like blocks
+      const mid = (SZ[r] + SZ[r + 1]) / 2, t = Math.max(0, Math.min(1, (z - (mid - d)) / (2 * d)));
+      return Math.round(top - d * t);   // stairs: one step up every two units
+    }
+  }
+  return levelAt(z);
+}
+/** Terrain surface (what the ground mesh shows): mountain plateau, shelf, city terraces, slopes, lowland, river channel. */
+export function terrainH(x, z) {
+  let h;
+  if (z < CLIFF_Z) {
+    // a rugged cliff: 3–4 tiers whose faces wander in and out, narrow ledges between them, the plateau above
+    const into = CLIFF_Z - z, wob = (k) => 7 * vnoise(x / 23 + k * 17, k * 3.1) + 3 * vnoise(x / 7 + k * 5, k);
+    const tiers = [[0, 150], [9, 168], [17, 184]];
+    let tierH = PLATEAU; for (const [d, th] of tiers) if (into < d + wob(d)) { tierH = th + Math.round(4 * vnoise(x / 11, d)); break; }
+    const edge = sstep((into - 30) / 60);
+    h = Math.min(tierH, PLATEAU) + (tierH >= PLATEAU ? mountainH(x, z) * edge : 0);
+    if (Math.abs(x - RX) < 10 && z > CLIFF_Z - 220) h = into < 26 ? 0 : Math.min(h, PLATEAU - 6);   // the river's gorge on the plateau, cut clean through the tiers (the falls)
+    if (h <= 0) return LV[0] - 7;
+    return Math.round(h);
+  }
+  const dx = Math.max(CITY.x0 - x, x - CITY.x1, 0), inCityZ = z < CITY.z1 + 40;
+  const terr = z < CITY.z0 ? LV[0] : z <= CITY.z1 + 12 ? (dx === 0 ? cityH(x, z) : levelAt(z)) : LV[ROWS] * Math.max(0, 1 - (z - CITY.z1 - 12) / 28);
+  if (dx === 0 && inCityZ) h = terr;
+  else {
+    const t = sstep((dx - 40) / 70), base = terr * (1 - t) + slopeAt(z) * t;
+    h = base;
+    if (dx > 30 || z > CITY.z1 + 40) {
+      for (const p of pads()) { const ox = Math.max(p.x0 - x, x - p.x1, 0), oz = Math.max(p.z0 - z, z - p.z1, 0), o = Math.hypot(ox, oz); if (o < 50) { const w = sstep(o / 50); h = p.h * (1 - w) + h * w; break; } }
+      const b = bumpsAt(x, z); if (b >= 0.6 && !occupied(x, z, 1)) h += b;
+    }
+  }
+  // river channel (and the pool on the shelf below the falls)
+  if (Math.hypot(x - POOL.x, z - POOL.z) < POOL.r) return Math.round(LV[0] - 8);
+  if (z > CITY.z0 - 30 && inRiver(x, z)) return z < CITY.z1 + 20 ? Math.max(3, Math.round(levelAt(Math.min(z, CITY.z1)) - 7)) : 0;
+  if (z >= CLIFF_Z && z <= CITY.z0 - 30 && inRiver(x, z)) return Math.round(LV[0] - 7);
+  return Math.max(0, Math.round(h));
+}
+/** Where bridges carry the east–west streets over the river (street lines r with a street on both banks). */
+export const BRIDGES = [];
+for (let r = 0; r <= ROWS; r++) { const w = HSEG[r][RIVER_C - 1], e = HSEG[r][RIVER_C]; if (w && e && w !== "none" && e !== "none") BRIDGES.push({ r, x: RX, z: SZ[r], y: LV[r] }); }
+/** Walking height: the terrain, except on bridges (deck level). */
 export function groundH(x, z) {
-  let h = 0; for (const b of BUMPS) { const d2 = ((x - b.x) ** 2 + (z - b.z) ** 2) / (b.r * b.r); if (d2 < 4) h += b.h * Math.exp(-d2 * 1.6); }
-  if (h < 0.6 || occupied(x, z, 1)) return 0;   // hills never spill onto roads, fields, the river or the city
-  return Math.round(h);
+  for (const b of BRIDGES) if (Math.abs(x - b.x) <= 13 && Math.abs(z - b.z) <= STREET / 2) return b.y;
+  return terrainH(x, z);
 }
 
 // ---- palettes for building variants
@@ -182,7 +272,7 @@ export function layout() {
         // setback: as deep as the opposite row allows (houses whose backs overlap this one in x), up to 12
         const x0 = x - F.l, x1 = x + F.r, front = 13;
         const opp = rects.filter((q) => q.south !== south && q.x1 > x0 && q.x0 < x1);
-        const backLimit = south ? Math.max(b.z, ...opp.map((q) => q.z1)) + 2 : Math.min(b.z + b.d, ...opp.map((q) => q.z0)) - 2;   // z the back may reach
+        const mid = b.z + b.d / 2, backLimit = south ? Math.max(b.z, mid + 2, ...opp.map((q) => q.z1 + 2)) : Math.min(b.z + b.d, mid - 2, ...opp.map((q) => q.z0 - 2));   // z the back may reach (never past the retaining wall in the middle)
         const zFront0 = south ? b.z + b.d - front : b.z + front;   // centre with zero setback
         const maxDz = Math.max(0, Math.min(12, south ? (zFront0 - F.back) - backLimit : backLimit - (zFront0 + F.back)));
         const dz = Math.round(rnd(0, maxDz) * f), z = south ? zFront0 - dz : zFront0 + dz, rr = south ? r + 1 : r;
@@ -198,12 +288,13 @@ export function layout() {
       if (b.x + b.w - prevEnd > 14 && f > 0.3) for (let gx = prevEnd + 6; gx < b.x + b.w - 5; gx += rnd(7, 10)) tree(gx, south ? b.z + b.d - rnd(6, 14) : b.z + rnd(6, 14), ["tree_round", "tree_fruit", "tree_blossom", "bamboo"]);
     }
     // now and then a giant landmark tree in the back-yard strip between the two rows (trunk clear of every building)
-    if (chance(0.24)) for (let tries = 0; tries < 8; tries++) { const tx = b.x + rnd(16, b.w - 16), tz = b.z + b.d / 2 + rnd(-5, 5);
+    const side = () => (chance(0.5) ? 1 : -1) * rnd(4, 7);   // the middle of the block is the retaining wall: keep things on one terrace
+    if (chance(0.24)) for (let tries = 0; tries < 8; tries++) { const tx = b.x + rnd(16, b.w - 16), tz = b.z + b.d / 2 + side();
       if (rects.some((q) => tx > q.x0 - 5 && tx < q.x1 + 5 && tz > q.z0 - 5 && tz < q.z1 + 5) || giants.some((g) => Math.hypot(g.x - tx, g.z - tz) < 80)) continue;
       giants.push({ x: tx, z: tz }); put(pick(GIANT_TREES), tx, tz, rndi(0, 3)); ob(tx, tz, 4); break; }
     // back-yard trees in the middle of the block, wherever no house reaches
-    for (let i = 0; i < 4; i++) { const tx = b.x + rnd(8, b.w - 8), tz = b.z + b.d / 2 + rnd(-4, 4); if (!rects.some((q) => tx > q.x0 - 3 && tx < q.x1 + 3 && tz > q.z0 - 3 && tz < q.z1 + 3)) tree(tx, tz); }
-    { const px = b.x + rnd(14, b.w - 14), pz = b.z + b.d / 2; if (chance(0.5) && !rects.some((q) => px > q.x0 - 5 && px < q.x1 + 5 && pz > q.z0 - 5 && pz < q.z1 + 5)) put(pick(["well", "haystack", "crates", "jars"]), px, pz, rndi(0, 3)); }
+    for (let i = 0; i < 4; i++) { const tx = b.x + rnd(8, b.w - 8), tz = b.z + b.d / 2 + side(); if (!rects.some((q) => tx > q.x0 - 3 && tx < q.x1 + 3 && tz > q.z0 - 3 && tz < q.z1 + 3)) tree(tx, tz); }
+    { const px = b.x + rnd(14, b.w - 14), pz = b.z + b.d / 2 + side(); if (chance(0.5) && !rects.some((q) => px > q.x0 - 5 && px < q.x1 + 5 && pz > q.z0 - 5 && pz < q.z1 + 5)) put(pick(["well", "haystack", "crates", "jars"]), px, pz, rndi(0, 3)); }
   }
   // closed side streets become gardens (T-junctions), often with a teahouse at one end facing the open street
   for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
@@ -234,7 +325,7 @@ export function layout() {
   // ---- the palace: red walls with gold caps, the old fortress gatehouse as its south gate, the great hall, side halls, a drill yard
   const P = PALACE, gold = { remap: variantRemap({ roof: "#e8b830" }), remapKey: "|gold" };
   const fort = { x: GATE_X, z: P.z + P.d - 16 };
-  put("fort_gate", fort.x, fort.z, 0, { y: 0, ...gold }); fort.outZ = P.z + P.d + 3; fort.inZ = fort.z + 2;
+  put("fort_gate", fort.x, fort.z, 0, gold); fort.outZ = P.z + P.d + 3; fort.inZ = fort.z + 2;
   for (let x = P.x + 2; x < P.x + P.w - 12; x += 22) { put("palace_wall", x + 11, P.z + 2, 0, gold); if (Math.abs(x + 11 - GATE_X) > 62) put("palace_wall", x + 11, P.z + P.d - 3, 2, gold); }
   for (let z = P.z + 2; z < P.z + P.d - 12; z += 22) { put("palace_wall", P.x + 2, z + 11, 1, gold); put("palace_wall", P.x + P.w - 3, z + 11, 3, gold); }
   // the great hall on its marble terraces at the back, a long ceremonial approach lined with dragon columns, guardian
@@ -246,7 +337,7 @@ export function layout() {
   for (const z of [hb + 26, hb + 66]) { put("home2", P.x + 22, z, 1, sideHall); put("home2", P.x + P.w - 22, z, 3, sideHall); }
   for (const [x, z] of [[P.x + 14, P.z + 14], [P.x + P.w - 14, P.z + 14], [P.x + 14, P.z + 150], [P.x + P.w - 14, P.z + 150], [P.x + 16, hb + 100], [P.x + P.w - 16, hb + 100]]) tree(x, z, ["tree_pine"]);
   if (MODELS_EXTRA.has("tree_ginkgo")) for (const dx of [-108, 108]) put("tree_ginkgo", HALL.x + dx, HALL.z + 40, 0);
-  const statue = (m, x, z, rot, r) => { if (!MODELS_EXTRA.has(m)) return; put(m, x, z, rot, { y: 0 }); ob(x, z, r); };
+  const statue = (m, x, z, rot, r) => { if (!MODELS_EXTRA.has(m)) return; put(m, x, z, rot); ob(x, z, r); };
   // lions: a pair at the hall stair, a pair just inside the gate, a pair outside it facing the city
   for (const sx of [-1, 1]) { statue("lion_statue", HALL.x + sx * 24, hb + 10, 0, 7); statue("lion_statue", GATE_X + sx * 22, P.z + P.d - 44, 0, 7); statue("lion_statue", GATE_X + sx * 22, P.z + P.d + 8, 0, 7); }
   // dragon columns flanking the approach, incense burners on the axis
@@ -256,7 +347,7 @@ export function layout() {
   for (let i = 0; i < 4; i++) put("target", YARD.x + YARD.w - 12, YARD.z + 8 + i * 9, 3);
   put("haystack", YARD.x + 8, YARD.z + 6, 0); put("crates", YARD.x + 24, YARD.z + 4, 1); put("jars", YARD.x + YARD.w - 40, YARD.z + 4, 0);
   // ---- market square: the giant statue of Jupiter in the middle, two rows of stalls, lantern posts
-  put("statue", STATUE.x, STATUE.z, 0, { y: 0 });
+  put("statue", STATUE.x, STATUE.z, 0);
   for (const dx of [-12, 0, 12]) for (const dz of [-9, 0, 9]) ob(STATUE.x + dx, STATUE.z + dz, 11);   // pedestal is solid: 3×3 circles cover its stepped, chamfered footprint
   for (const z of [PLAZA.z + 12, PLAZA.z + PLAZA.d - 12]) for (const x of [PLAZA.x + 24, PLAZA.x + 68, PLAZA.x + PLAZA.w - 68, PLAZA.x + PLAZA.w - 24]) {
     const north = z < CENTER.z, cloth = pick(CLOTHS), roof = pick(ROOFS);
@@ -270,12 +361,19 @@ export function layout() {
     if (cellAt(x, z) !== "street") continue; const m = pick(["lantern_post", "lantern_post", "jars", "crates", "haystack", "well"]); put(m, x, z, rndi(0, 3)); ob(x, z, m === "lantern_post" ? 2 : 5); }
 
   // ---- city walls (24 tall): 22-long segments, towers at corners and along the sides, gate in the south wall
-  for (let x = CITY.x0 - 9; x < CITY.x1 + 9; x += 22) { put("wall", x + 11, CITY.z0 - 1, 0, { y: 0 }); if (Math.abs(x + 11 - GATE_X) >= 26) put("wall", x + 11, CITY.z1 + 1, 2, { y: 0 }); }
-  for (let z = CITY.z0 - 9; z < CITY.z1 + 9; z += 22) { put("wall", CITY.x0 - 1, z + 11, 1, { y: 0 }); put("wall", CITY.x1 + 1, z + 11, 3, { y: 0 }); }
-  put("city_gate", GATE_X, CITY.z1 + 5, 0, { y: 0 });
+  // walls follow the terraces: each segment sits at the lower of its two ends (the uphill end is buried, never floating)
+  const lowAt = (pts) => Math.min(...pts.map(([x, z]) => terrainH(x, z)));
+  for (let x = CITY.x0 - 9; x < CITY.x1 + 9; x += 22) { const cx = x + 11; if (Math.abs(cx - RX) < 22) continue;
+    put("wall", cx, CITY.z0 - 1, 0, { y: lowAt([[cx - 11, CITY.z0 - 1], [cx + 11, CITY.z0 - 1]]) });
+    if (Math.abs(cx - GATE_X) >= 26) put("wall", cx, CITY.z1 + 1, 2, { y: lowAt([[cx - 11, CITY.z1 + 1], [cx + 11, CITY.z1 + 1]]) }); }
+  for (let z = CITY.z0 - 9; z < CITY.z1 + 9; z += 22) for (const [x, rot] of [[CITY.x0 - 1, 1], [CITY.x1 + 1, 3]]) put("wall", x, z + 11, rot, { y: lowAt([[x, z], [x, z + 22]]) });
+  // where the river passes through the walls: arched water gates (north: in from the pool; south: out to the paddies)
+  if (MODELS_EXTRA.has("water_gate")) for (const [z, rot] of [[CITY.z0 - 1, 0], [CITY.z1 + 1, 2]]) put("water_gate", RX, z, rot, { y: lowAt([[RX - 20, z], [RX + 20, z]]) });
+  else for (const [z, rot] of [[CITY.z0 - 1, 0], [CITY.z1 + 1, 2]]) for (const dx of [-16, 16]) put("wall", RX + dx, z, rot, { y: lowAt([[RX + dx - 11, z], [RX + dx + 11, z]]) });
+  put("city_gate", GATE_X, CITY.z1 + 5, 0);
   const zA = SZ[3], zB = SZ[6], TX = [SX[2], SX[6]];
   for (const [x, z] of [[CITY.x0 - 14, CITY.z0 - 14], [CITY.x1 + 14, CITY.z0 - 14], [CITY.x0 - 14, CITY.z1 + 14], [CITY.x1 + 14, CITY.z1 + 14],
-    [TX[0], CITY.z0 - 14], [TX[1], CITY.z0 - 14], [TX[0], CITY.z1 + 14], [TX[1], CITY.z1 + 14], [CITY.x0 - 14, zA], [CITY.x1 + 14, zA], [CITY.x0 - 14, zB], [CITY.x1 + 14, zB]]) { put("tower", x, z, 0, { y: 0 }); towers.push({ x, z }); }
+    [TX[0], CITY.z0 - 14], [TX[1], CITY.z0 - 14], [TX[0], CITY.z1 + 14], [TX[1], CITY.z1 + 14], [CITY.x0 - 14, zA], [CITY.x1 + 14, zA], [CITY.x0 - 14, zB], [CITY.x1 + 14, zB]]) { const ty = lowAt([[x - 9, z - 9], [x + 9, z - 9], [x - 9, z + 9], [x + 9, z + 9]]); put("tower", x, z, 0, { y: ty }); towers.push({ x, z, y: ty }); }
   const beats = [ // sentry walking ranges on the wall walkways, between towers
     ...[[CITY.x0 + 2, TX[0] - 18], [TX[0] + 18, TX[1] - 18], [TX[1] + 18, CITY.x1 - 2]].map(([a0, a1]) => ({ ax: "x", a0, a1, fixed: WALL.n })),
     ...[[CITY.x0 + 2, TX[0] - 18], [TX[0] + 18, GATE_X - 30], [GATE_X + 30, TX[1] - 18], [TX[1] + 18, CITY.x1 - 2]].map(([a0, a1]) => ({ ax: "x", a0, a1, fixed: WALL.s })),
@@ -292,14 +390,19 @@ export function layout() {
   for (const f of FIELDS) { const wheat = f.crop === "wheat";
     for (let z = f.z + 3; z < f.z + f.d - 2; z += wheat ? 3 : 5) for (let x = f.x + 3; x < f.x + f.w - 2; x += wheat ? 2 : 4) crops.push({ x: x + rnd(-0.4, 0.4), z, kind: f.crop }); }
   for (let k = 0; k < 26; k++) { // forests, preferably on hills
-    const b = k < 18 && BUMPS[k] ? BUMPS[k] : null, cx = b ? b.x : rnd(0, WX), cz = b ? b.z : rnd(RIVER.zc(0) + 40, WZ), R = b ? b.r * 1.1 : rnd(30, 60);
+    const b = k < 18 && BUMPS[k] ? BUMPS[k] : null, cx = b ? b.x : rnd(0, WX), cz = b ? b.z : rnd(CLIFF_Z + 60, WZ), R = b ? b.r * 1.1 : rnd(30, 60);
     for (let i = 0; i < R * 0.9; i++) { const a = rnd(0, 6.28), d = Math.sqrt(rand()) * R, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d; if (!occupied(x, z, 2) && x > -80 && x < WX + 80) tree(x, z, ["tree_pine", "tree_pine", "tree_round", "tree_round", "bamboo"]); }
   }
-  for (let i = 0; i < 520; i++) { const x = rnd(-80, WX + 80), z = rnd(RIVER.zc(0) - 40, WZ + 60); if (occupied(x, z, 3) && !(Math.abs(z - RIVER.zc(x)) > RIVER.hw + 6 && Math.abs(z - RIVER.zc(x)) < RIVER.hw + 30 && !inRect(x, z, CITY_R, 4))) continue; tree(x, z); }
+  for (let i = 0; i < 520; i++) { const x = rnd(-80, WX + 80), z = rnd(CLIFF_Z + 50, WZ + 60), dr = Math.abs(x - RIVER.x(z)); if (occupied(x, z, 3) && !(dr > RIVER.halfW(z) + 6 && dr < RIVER.halfW(z) + 30 && !inRect(x, z, CITY_R, 4) && z > CITY.z1 + 30)) continue; tree(x, z); }
+  // pines along the plateau's edge above the cliff, and trees on the shelf around the pool
+  for (let x = -60; x < WX + 60; x += rnd(14, 30)) if (Math.abs(x - RX) > 24) tree(x, CLIFF_Z - rnd(8, 30), ["tree_pine", "tree_pine", "tree_round"]);
+  for (let i = 0; i < 26; i++) { const a = rnd(0, 6.28), d = rnd(POOL.r + 6, POOL.r + 26), x = POOL.x + Math.cos(a) * d, z = POOL.z + Math.sin(a) * d * 0.7; if (z > CLIFF_Z + 6 && z < CITY.z0 - 16 && !inRiver(x, z, 3)) tree(x, z, ["tree_blossom", "bamboo", "tree_round", "tree_pine"]); }
   for (let i = 0; i < 14; i++) { const p = pick(PADDIES); put("haystack", rnd(p.x, p.x + p.w), p.z - 12, rndi(0, 3)); }
-  const WHEEL = { x: CITY.x0 - 120, z: RIVER.zc(CITY.x0 - 120) };
-  put("home1", WHEEL.x + 36, RIVER.zc(WHEEL.x + 36) + RIVER.hw + 18, 2, { y: 0, remap: variantRemap({ roof: "#6a7fa0" }), remapKey: "|mill" });
-  const DOCKS = [CITY.x0 + 140, CITY.x1 - 160];
+  // the mill: a water wheel on the lowland river below the city (the wheel turns in the y–z plane: the river flows south)
+  const wz = PADDIES[0].z + PADDIES[0].d + 60, WHEEL = { z: wz, x: RIVER.x(wz) - RIVER.halfW(wz) - 1 };
+  put("home1", WHEEL.x - 24, wz, 1, { remap: variantRemap({ roof: "#6a7fa0" }), remapKey: "|mill" });
+  const DOCKS = [CITY.z1 + 260, CITY.z1 + 360];   // z of the two fishing docks (on the river's east bank)
+  for (const dz of DOCKS) ob(RIVER.x(dz) + RIVER.halfW(dz) + 3, dz, 4);
   return { statics, houses, obstacles, stalls, crops, towers, beats, pagoda, fort, WHEEL, DOCKS, bumps: BUMPS, statuePerches: STATUE_PERCHES };
 }
 
@@ -318,9 +421,11 @@ export function groundTexture() {
   for (const r of ROADS) { const x0 = Math.max(0, r.x), z0 = Math.max(0, r.z), x1 = Math.min(WX, r.x + r.w), z1 = Math.min(WZ, r.z + r.d); F(x0, z0, x1 - x0, z1 - z0, "#c8a878");
     for (let i = 0; i < (x1 - x0) * (z1 - z0) / 30; i++) F(rnd(x0, x1), rnd(z0, z1), rndi(1, 3), 1, pick(["#b89868", "#d8bc8c", "#a88858"])); }
   for (let z = CITY.z1; z < WZ; z += 4) for (let x = GATE_X - 9 + ((z / 4) % 2 ? 3 : 0); x < GATE_X + 9; x += 6) F(x, z + 1, 5, 3, pick(["#e0cfa4", "#d8c69a", "#e6d7b0"]));
-  for (let x = 0; x < WX; x++) { const zc = RIVER.zc(x), hw = RIVER.hw; F(x, zc - hw - 5, 1, 2 * hw + 10, "#e8d8a0"); F(x, zc - hw, 1, 2 * hw, "#3a8ac8"); F(x, zc - hw / 3, 1, hw * 0.66, "#2f78b8"); }
-  for (let i = 0; i < 1600; i++) { const x = rnd(0, WX); F(x, RIVER.zc(x) + rnd(-RIVER.hw + 2, RIVER.hw - 2), rndi(2, 5), 1, "#a8e0ff"); }
-  for (const dx of [CITY.x0 + 140, CITY.x1 - 160]) { const zc = RIVER.zc(dx); F(dx - 5, zc - 2, 10, RIVER.hw + 8, "#8a5a32"); for (let z = zc - 1; z < zc + RIVER.hw + 6; z += 2) F(dx - 5, z, 10, 1, "#b07a44"); }
+  for (let z = CITY.z1 + 4; z < WZ; z++) { const xc = RIVER.x(z), hw = RIVER.halfW(z); F(xc - hw - 5, z, 2 * hw + 10, 1, "#e8d8a0"); F(xc - hw, z, 2 * hw, 1, "#3a8ac8"); F(xc - hw / 3, z, hw * 0.66, 1, "#2f78b8"); }
+  for (let i = 0; i < 900; i++) { const z = rnd(CITY.z1 + 4, WZ), hw = RIVER.halfW(z); F(RIVER.x(z) + rnd(-hw + 2, hw - 2), z, 1, rndi(2, 5), "#a8e0ff"); }
+  for (const dz of [CITY.z1 + 260, CITY.z1 + 360]) { const xr = RIVER.x(dz) + RIVER.halfW(dz); F(xr - 2, dz - 5, 12, 10, "#8a5a32"); for (let x = xr - 1; x < xr + 10; x += 2) F(x, dz - 5, 1, 10, "#b07a44"); }
+  // the shelf below the cliff: a pebble beach round the pool
+  { g.fillStyle = "#cfc4a8"; g.beginPath(); g.ellipse(POOL.x, POOL.z, POOL.r + 8, POOL.r * 0.9 + 6, 0, 0, 6.3); g.fill(); }
   // city floor: stone slabs on streets; garden strips (closed streets) and alleys with a winding paved path; blocks; plaza; palace
   F(CITY.x0, CITY.z0, CW, CD, "#b49c70");
   for (let z = CITY.z0; z < CITY.z1; z += 4) for (let x = CITY.x0 + ((z / 4) % 2 ? 3 : 0); x < CITY.x1; x += 6) {
@@ -435,7 +540,7 @@ function vnoise(x, z) { // value noise, smooth in x and z, 0..1
 const PEAKS = (() => {
   let t = 977; const r = () => { t = (t + 0x6d2b79f5) | 0; let q = Math.imul(t ^ (t >>> 15), 1 | t); q = (q + Math.imul(q ^ (q >>> 7), 61 | q)) ^ q; return ((q ^ (q >>> 14)) >>> 0) / 4294967296; };
   const out = [];
-  for (const [zMin, zMax, hMin, hMax, gapMin, gapMax] of [[-110, -45, 62, 125, 40, 105], [-30, 25, 18, 46, 26, 70]])
+  for (const [zMin, zMax, hMin, hMax, gapMin, gapMax] of [[-140, -50, 70, 140, 40, 105], [-20, 90, 18, 52, 26, 70]])
     for (let x = -950 + r() * 60; x < WX + 950; x += gapMin + r() * (gapMax - gapMin)) {
       const h = hMin + (hMax - hMin) * Math.pow(r(), 0.8);
       out.push({ x, z: zMin + r() * (zMax - zMin), h, rx: h * (0.9 + r() * 1.1), rz: h * (0.7 + r() * 0.7), p: 1.1 + r() * 0.9, tilt: (r() - 0.5) * 0.8 });
@@ -455,19 +560,79 @@ function mountainH(x, z) {
   h += (vnoise(x / 11, z / 11) - 0.5) * 7 + (vnoise(x / 4.3, z / 4.3) - 0.5) * 3;
   return Math.max(0, Math.round(h));
 }
-export function mountainGeometry() {
-  return heightfield(-900, WX + 900, -170, RIVER.zc(0) - RIVER.hw - 14, 2, (x, z) => (z > RIVER.zc(x) - RIVER.hw - 12 ? 0 : mountainH(x, z)), (h, top, x, z, C) => {
-    const snow = 62 + 10 * vnoise(x / 9, z / 9), rock = 32 + 6 * vnoise(x / 7 + 50, z / 7);
-    return C.set(h > snow ? (top ? "#f4f8ff" : "#c8d6ea") : h > rock ? (top ? (hash(x, z) > 0.5 ? "#8aa0b0" : "#7e94a6") : "#6a8090") : h > 14 ? (top ? (hash(x, z) > 0.5 ? "#4f9a5a" : "#478f52") : "#3a7a46") : top ? (hash(x, z) > 0.5 ? "#6cc04c" : "#62b446") : "#4e9a3a");
-  });
+/**
+ * Terrain mesher (voxel columns, greedy). Tops are either textured with the painted ground (uv = world xz over the
+ * world rect; vertex colour white) or vertex-coloured; side faces carry a "brick" uv (along-wall, height) for the
+ * retaining-wall texture. Output: one geometry with groups 0 = textured tops, 1 = brick sides, 2 = vertex-coloured faces.
+ */
+function terrainField(x0, x1, z0, z1, s, H, o) {
+  const P = [], N = [], C = [], U = [], idx = [[], [], []];
+  const quad = (grp, a, b, c2, d, n, col, uv) => { const i = P.length / 3; P.push(...a, ...b, ...c2, ...d); for (let k = 0; k < 4; k++) { N.push(...n); C.push(col[0], col[1], col[2]); } U.push(...uv); idx[grp].push(i, i + 1, i + 2, i, i + 2, i + 3); };
+  const nx = Math.ceil((x1 - x0) / s), nz = Math.ceil((z1 - z0) / s), W = nx + 2, hh = new Float32Array(W * (nz + 2));
+  for (let i = -1; i <= nx; i++) for (let j = -1; j <= nz; j++) hh[(j + 1) * W + i + 1] = H(x0 + i * s, z0 + j * s);
+  const hAt = (i, j) => hh[(j + 1) * W + i + 1], col = new THREE.Color(), WHITE = [1, 1, 1];
+  const tex = (x, z) => [x / WX, 1 - z / WZ];
+  // tops: textured where o.textured(x, z), else coloured; greedy over equal height (+ equal colour when coloured)
+  const done = new Uint8Array(nx * nz), key = new Float32Array(nx * nz);
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) { const h = hAt(i, j); if (h <= 0) continue; const x = x0 + i * s, z = z0 + j * s;
+    if (o.textured?.(x, z)) key[j * nx + i] = -1; else { o.topColor(h, x, z, col); key[j * nx + i] = Math.round(col.r * 255) * 65536 + Math.round(col.g * 255) * 256 + Math.round(col.b * 255); } }
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+    const c = j * nx + i, h = hAt(i, j); if (h <= 0 || done[c]) continue; const k = key[c], ok = (a, b) => !done[b * nx + a] && hAt(a, b) === h && key[b * nx + a] === k;
+    let dj = 1, di = 1; while (j + dj < nz && ok(i, j + dj)) dj++;
+    for (; i + di < nx; di++) { let q = 0; while (q < dj && ok(i + di, j + q)) q++; if (q < dj) break; }
+    for (let a = 0; a < di; a++) for (let b = 0; b < dj; b++) done[(j + b) * nx + i + a] = 1;
+    const xa = x0 + i * s, xb = xa + di * s, za = z0 + j * s, zb = za + dj * s;
+    if (k === -1) quad(0, [xa, h, za], [xa, h, zb], [xb, h, zb], [xb, h, za], [0, 1, 0], WHITE, [...tex(xa, za), ...tex(xa, zb), ...tex(xb, zb), ...tex(xb, za)]);
+    else quad(2, [xa, h, za], [xa, h, zb], [xb, h, zb], [xb, h, za], [0, 1, 0], [((k >> 16) & 255) / 255, ((k >> 8) & 255) / 255, (k & 255) / 255], [0, 0, 0, 0, 0, 0, 0, 0]);
+  }
+  // sides: runs along each row where the neighbour is lower; brick group where o.brick(x, z)
+  const side = (i, j, len, h, hn, dir) => {
+    const x = x0 + i * s, z = z0 + j * s, brick = o.brick?.(x, z, h - hn);
+    o.sideColor(h, hn, x, z, col); const sh = dir === 0 ? 0.92 : dir === 1 ? 0.8 : dir === 2 ? 1 : 0.85, cc = [col.r * sh, col.g * sh, col.b * sh];
+    let a, b, c2, d, n, al;
+    if (dir === 0) { const xa = x, xb = x + len * s, zf = z + s; a = [xa, hn, zf]; b = [xb, hn, zf]; c2 = [xb, h, zf]; d = [xa, h, zf]; n = [0, 0, 1]; al = [xa, xb]; }
+    else if (dir === 1) { const xa = x, xb = x + len * s; a = [xa, hn, z]; b = [xa, h, z]; c2 = [xb, h, z]; d = [xb, hn, z]; n = [0, 0, -1]; al = [xa, xb]; }
+    else if (dir === 2) { const xf = x + s, za = z, zb = z + len * s; a = [xf, hn, za]; b = [xf, h, za]; c2 = [xf, h, zb]; d = [xf, hn, zb]; n = [1, 0, 0]; al = [za, zb]; }
+    else { const za = z, zb = z + len * s; a = [x, hn, za]; b = [x, hn, zb]; c2 = [x, h, zb]; d = [x, h, za]; n = [-1, 0, 0]; al = [za, zb]; }
+    const uv = (p) => [(dir < 2 ? p[0] : p[2]) / 6, p[1] / 3];
+    quad(brick ? 1 : 2, a, b, c2, d, n, cc, [...uv(a), ...uv(b), ...uv(c2), ...uv(d)]);
+  };
+  const runs = (n, m, cell, dir) => {
+    for (let b = 0; b < m; b++) for (let a = 0; a < n;) {
+      const [i, j, ni, nj] = cell(a, b), h = hAt(i, j), hn = hAt(ni, nj);
+      if (h <= 0 || hn >= h) { a++; continue; }
+      let len = 1; for (; a + len < n; len++) { const [i2, j2, ni2, nj2] = cell(a + len, b); if (hAt(i2, j2) !== h || hAt(ni2, nj2) !== hn) break; }
+      side(i, j, len, h, Math.max(0, hn), dir); a += len;
+    }
+  };
+  runs(nx, nz, (a, b) => [a, b, a, b + 1], 0); runs(nx, nz, (a, b) => [a, b, a, b - 1], 1);
+  runs(nz, nx, (a, b) => [b, a, b + 1, a], 2); runs(nz, nx, (a, b) => [b, a, b - 1, a], 3);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(P, 3)); g.setAttribute("normal", new THREE.Float32BufferAttribute(N, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(C, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(U, 2));
+  const all = [...idx[0], ...idx[1], ...idx[2]]; g.setIndex(all);
+  g.addGroup(0, idx[0].length, 0); g.addGroup(idx[0].length, idx[1].length, 1); g.addGroup(idx[0].length + idx[1].length, idx[2].length, 2);
+  g.computeBoundingSphere(); return g;
 }
-/** Rolling hills from groundH, meshed at 1 voxel so trees and people sit right on them. */
-export function hillGeometry(bumps) {
-  if (!bumps.length) return new THREE.BufferGeometry();
-  const x0 = Math.floor(Math.min(...bumps.map((b) => b.x - 2 * b.r))), x1 = Math.ceil(Math.max(...bumps.map((b) => b.x + 2 * b.r)));
-  const z0 = Math.floor(Math.min(...bumps.map((b) => b.z - 2 * b.r))), z1 = Math.ceil(Math.max(...bumps.map((b) => b.z + 2 * b.r)));
-  return heightfield(x0, x1, z0, z1, 1, groundH, (h, top, x, z, C) => {
-    const n = hash(x, z); if (!top) return C.set(h % 3 === 0 ? "#8a6a42" : "#5a9a3a");
-    return C.set(n > 0.92 ? "#90d866" : n > 0.6 ? "#6cc04c" : n > 0.3 ? "#62b446" : "#5aac40").multiplyScalar(0.9 + Math.min(h, 16) * 0.012);
-  });
+const inCityWalls = (x, z) => x > CITY.x0 - 30 && x < CITY.x1 + 30 && z > CLIFF_Z - 2 && z < CITY.z1 + 30;
+function mountainColor(h, x, z, C) {
+  const r = h - PLATEAU, snow = 62 + 10 * vnoise(x / 9, z / 9), rock = 30 + 6 * vnoise(x / 7 + 50, z / 7);
+  if (h < PLATEAU - 4) return C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446");
+  return C.set(r > snow ? "#f4f8ff" : r > rock ? (hash(x, z) > 0.5 ? "#8aa0b0" : "#7e94a6") : r > 12 ? (hash(x, z) > 0.5 ? "#4f9a5a" : "#478f52") : hash(x, z) > 0.5 ? "#5cae48" : "#54a442");
+}
+function sideColorAt(h, hn, x, z, C) {
+  if (inCityWalls(x, z) && (z > CITY.z0 - 40 || inRiver(x, z, 4) || Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 4)) return C.set("#c8bea8");   // dressed stone retaining walls, channel and pool
+  if (z < CLIFF_Z + 2 && z > CLIFF_Z - 40 && h > LV[0] + 4) { const k = hash(Math.floor(x / 5), Math.floor(h / 9)); return C.set(k > 0.66 ? "#8e8c92" : k > 0.33 ? "#7c7a82" : "#9a968e"); }   // the great cliff: rock in vertical bands
+  if (h > PLATEAU - 4) return mountainColor(h, x, z, C).multiplyScalar(0.8);
+  return C.set(h % 3 === 0 ? "#8a6a42" : "#5a9a3a");                                    // earth banks on the slopes
+}
+/** The ground: {main} = the world rect (textured tops, brick retaining walls) and {outer} = mountains + slopes beyond it. */
+export function terrainGeometry() {
+  const main = terrainField(0, WX, CLIFF_Z, WZ, 2, terrainH, { textured: (x, z) => z >= CLIFF_Z, topColor: mountainColor, sideColor: sideColorAt, brick: (x, z, d) => inCityWalls(x, z) && d >= 2 && (z > CITY.z0 - 40 || inRiver(x, z, 4) || Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 4) });
+  const parts = [
+    terrainField(-900, WX + 900, -420, CLIFF_Z, 4, terrainH, { topColor: mountainColor, sideColor: sideColorAt }),
+    terrainField(-900, 0, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446"), sideColor: sideColorAt }),
+    terrainField(WX, WX + 900, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446"), sideColor: sideColorAt }),
+  ];
+  return { main, outer: parts };
 }

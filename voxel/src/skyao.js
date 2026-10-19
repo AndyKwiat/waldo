@@ -18,8 +18,9 @@ export function columnTops(grid) {
  * Height map over a world rectangle at `res` units per cell. `placements`: [{x, y, z, rot, tops, size}] (model
  * placed by grid centre in x/z, `rot` quarter turns about +y, three.js convention). Returns {h, nx, nz, x0, z0, res}.
  */
-export function heightMap(placements, rect, res = 2) {
-  const nx = Math.ceil(rect.w / res), nz = Math.ceil(rect.d / res), h = new Float32Array(nx * nz);
+export function heightMap(placements, rect, res = 2, baseH = null) {
+  const nx = Math.ceil(rect.w / res), nz = Math.ceil(rect.d / res), h = new Float32Array(nx * nz), base = new Float32Array(nx * nz);
+  if (baseH) for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) base[j * nx + i] = h[j * nx + i] = baseH(rect.x + (i + 0.5) * res, rect.z + (j + 0.5) * res);   // the terrain itself occludes too
   for (const p of placements) {
     const S = p.size, t = p.tops, a = (p.rot || 0) * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
     for (let lz = 0; lz < S; lz++) for (let lx = 0; lx < S; lx++) {
@@ -31,7 +32,7 @@ export function heightMap(placements, rect, res = 2) {
       const v = (p.y || 0) + top; if (v > h[j * nx + i]) h[j * nx + i] = v;
     }
   }
-  return { h, nx, nz, x0: rect.x, z0: rect.z, res };
+  return { h, base, nx, nz, x0: rect.x, z0: rect.z, res };
 }
 
 /**
@@ -39,7 +40,7 @@ export function heightMap(placements, rect, res = 2) {
  * max_k sin(elevation of the k-th sample) · (1 − (d/R)²). Cells far from anything tall are skipped (0).
  */
 export function bakeSkyAO(hm, { radius = 44, dirs = 12, eye = 0.6 } = {}) {
-  const { h, nx, nz, res } = hm, occ = new Float32Array(nx * nz), R = radius / res;
+  const { h, base, nx, nz, res } = hm, occ = new Float32Array(nx * nz), R = radius / res;
   // coarse max map (blocks of B cells) for an early out where nothing tall is within reach
   const B = 8, bx = Math.ceil(nx / B), bz = Math.ceil(nz / B), bmax = new Float32Array(bx * bz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const k = Math.floor(j / B) * bx + Math.floor(i / B); if (h[j * nx + i] > bmax[k]) bmax[k] = h[j * nx + i]; }
@@ -47,8 +48,8 @@ export function bakeSkyAO(hm, { radius = 44, dirs = 12, eye = 0.6 } = {}) {
   const DX = [], DZ = []; for (let d = 0; d < dirs; d++) { const a = (d + 0.5) / dirs * Math.PI * 2; DX.push(Math.cos(a)); DZ.push(Math.sin(a)); }
   const steps = []; for (let s = 1; s <= R; s += Math.max(1, s * 0.25)) steps.push(s);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const h0 = 0; let tall = 0; const ci = Math.floor(i / B), cj = Math.floor(j / B);
-    for (let b = Math.max(0, cj - reach); b <= Math.min(bz - 1, cj + reach) && !tall; b++) for (let a = Math.max(0, ci - reach); a <= Math.min(bx - 1, ci + reach); a++) if (bmax[b * bx + a] > 2) { tall = 1; break; }
+    const h0 = base ? base[j * nx + i] : 0; let tall = 0; const ci = Math.floor(i / B), cj = Math.floor(j / B);
+    for (let b = Math.max(0, cj - reach); b <= Math.min(bz - 1, cj + reach) && !tall; b++) for (let a = Math.max(0, ci - reach); a <= Math.min(bx - 1, ci + reach); a++) if (bmax[b * bx + a] > h0 + 2) { tall = 1; break; }
     if (!tall) continue;
     let sum = 0;
     for (let d = 0; d < dirs; d++) {

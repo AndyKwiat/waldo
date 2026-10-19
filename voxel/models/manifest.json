@@ -682,5 +682,197 @@
     "z": 18
    }
   }
+ },
+ "bridge_stone": {
+  "size": 32,
+  "voxels": 1814,
+  "bbox": {
+   "min": {
+    "x": 2,
+    "y": 0,
+    "z": 4
+   },
+   "max": {
+    "x": 29,
+    "y": 17,
+    "z": 27
+   }
+  }
+ },
+ "water_gate": {
+  "size": 40,
+  "voxels": 3456,
+  "bbox": {
+   "min": {
+    "x": 0,
+    "y": 0,
+    "z": 14
+   },
+   "max": {
+    "x": 39,
+    "y": 37,
+    "z": 26
+   }
+  }
+ },
+ "pulley_wheel": {
+  "size": 28,
+  "voxels": 1760,
+  "bbox": {
+   "min": {
+    "x": 1,
+    "y": 1,
+    "z": 9
+   },
+   "max": {
+    "x": 26,
+    "y": 26,
+    "z": 18
+   }
+  }
+ },
+ "capstan": {
+  "size": 40,
+  "voxels": 732,
+  "bbox": {
+   "min": {
+    "x": 4,
+    "y": 0,
+    "z": 4
+   },
+   "max": {
+    "x": 35,
+    "y": 14,
+    "z": 35
+   }
+  }
+ },
+ "gondola_station_low": {
+  "size": 64,
+  "voxels": 3694,
+  "bbox": {
+   "min": {
+    "x": 2,
+    "y": 0,
+    "z": 14
+   },
+   "max": {
+    "x": 63,
+    "y": 41,
+    "z": 49
+   }
+  }
+ },
+ "gondola_station_high": {
+  "size": 48,
+  "voxels": 3059,
+  "bbox": {
+   "min": {
+    "x": 0,
+    "y": 0,
+    "z": 13
+   },
+   "max": {
+    "x": 43,
+    "y": 37,
+    "z": 37
+   }
+  }
+ },
+ "gondola_car": {
+  "size": 24,
+  "voxels": 803,
+  "bbox": {
+   "min": {
+    "x": 4,
+    "y": 0,
+    "z": 5
+   },
+   "max": {
+    "x": 19,
+    "y": 23,
+    "z": 18
+   }
+  }
+ },
+ "elevator_tower": {
+  "size": 48,
+  "voxels": 2975,
+  "bbox": {
+   "min": {
+    "x": 9,
+    "y": 0,
+    "z": 7
+   },
+   "max": {
+    "x": 47,
+    "y": 47,
+    "z": 35
+   }
+  }
+ },
+ "elevator_cage": {
+  "size": 16,
+  "voxels": 234,
+  "bbox": {
+   "min": {
+    "x": 4,
+    "y": 0,
+    "z": 4
+   },
+   "max": {
+    "x": 12,
+    "y": 10,
+    "z": 12
+   }
+  }
+ },
+ "airship_cargo": {
+  "size": 64,
+  "voxels": 2860,
+  "bbox": {
+   "min": {
+    "x": 9,
+    "y": 0,
+    "z": 18
+   },
+   "max": {
+    "x": 57,
+    "y": 48,
+    "z": 45
+   }
+  }
+ },
+ "airship_small": {
+  "size": 48,
+  "voxels": 1398,
+  "bbox": {
+   "min": {
+    "x": 11,
+    "y": 2,
+    "z": 14
+   },
+   "max": {
+    "x": 36,
+    "y": 43,
+    "z": 33
+   }
+  }
+ },
+ "mooring_mast": {
+  "size": 48,
+  "voxels": 1222,
+  "bbox": {
+   "min": {
+    "x": 8,
+    "y": 0,
+    "z": 17
+   },
+   "max": {
+    "x": 30,
+    "y": 47,
+    "z": 30
+   }
+  }
  }
 }
