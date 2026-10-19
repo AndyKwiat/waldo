@@ -363,7 +363,7 @@ function applyNight(n) {
   nightU.uNight.value = n;
   for (const g of glowMats) { g.im.visible = n > 0.01; if (g.opacityMode) g.mat.opacity = n; else g.mat.color.setScalar(1.6 * n); }
   bloom.enabled = n > 0.01; bloom.strength = 0.9 * n;
-  sky?.set(n); sunMoon?.set(n);
+  sky?.set(n); sunMoon?.set(n); water.setNight(n);
 }
 
 let wheel = null, transport = null;
