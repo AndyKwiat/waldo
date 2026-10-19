@@ -50,7 +50,13 @@ lowland; `water.js` meshes it (flat stretches with scrolling glints, fall sheets
 **Transport** (`TRANSPORTS` in `world.js`, drawn by `transport.js`, ridden in `sim.js`):
 - **Gondola:** the riverside station on the plaza terrace up over a timber pylon, the north wall and the falls to the
   mountain shrine on the plateau. Two cars shuttle on one rope; two oxen walk round the capstan while they move.
-- **Lift:** a counterweighted cage in a timber tower on the retaining wall between the plaza and palace terraces.
+- **Mountain gondola:** a second line on the west side, from the lowland just outside the south wall (through a gap in
+  it) over five pylons, with a stop on the plaza terrace, up to the plateau; a bridge carries the plateau path over the
+  river to the shrine. Lines can have any number of stops (`stops`, `carState` with per-stop dwells).
+- **Cargo lifts:** two per cliff band (`LIFT_SPOTS`), a stack of `cargo_lift_section`s up the rock (scaled to the drop)
+  with a `cargo_lift_head` gantry on the clifftop and a 32×32 `cargo_lift_cage`. Carts can't climb stairs: their graph
+  is level streets + lifts only (a cart counts 4 of a cage's 10 places). Stairs: the main avenue's grand stair (double
+  width, top to bottom) plus one more per band; the other stair streets became garden strips.
 - **Riding:** both ends are graph nodes joined by a "ride" edge, so routes take them when that's quicker (or to reach
   the shrine). Riders wait on the platform for a docked car with room, ride along (`absY`), and step off at the far end.
   `carState/carPos` give car positions to both the sim and the renderer.

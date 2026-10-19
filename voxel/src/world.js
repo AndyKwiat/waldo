@@ -56,6 +56,14 @@ const MAIN_ROWS = new Set([0, 3, PLAZA_R, PLAZA_R + 1, ROWS]), MAIN_COLS = new S
 const touchesSpecial = (cells) => cells.some(([c, r]) => c >= 0 && r >= 0 && c < COLS && r < ROWS && isSpecialBlock(c, r));
 for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (HSEG[r][c] === "street" && !MAIN_ROWS.has(r) && !touchesSpecial([[c, r - 1], [c, r]]) && lr() < 0.38) HSEG[r][c] = "alley";
 for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) if (VSEG[c][r] === "street" && !MAIN_COLS.has(c) && !touchesSpecial([[c - 1, r], [c, r]]) && lr() < 0.32) VSEG[c][r] = "garden";
+// terrace levels of the street lines (see "the mountain" below); a north–south segment between lines of different level is a stair
+export const LV = [334, 334, 334, 334, 244, 244, 162, 86, 10];
+export const isStairSeg = (c, r) => LV[r] !== LV[r + 1];
+// stairs: the grand stair down the main avenue (double width) plus one more per cliff band; the rest become garden strips
+// (lifts on every band carry carts and anyone in a hurry)
+const KEEP_STAIR = { 3: 7, 5: 0, 6: 8, 7: 3 };
+for (let r = 0; r < ROWS; r++) if (isStairSeg(0, r)) for (let c = 0; c <= COLS; c++) if (c !== AV_C && c !== KEEP_STAIR[r] && VSEG[c][r] === "street") VSEG[c][r] = "garden";
+export const STAIR_HALF = (c) => (c === AV_C ? STREET : STREET / 2);
 // the river runs down the middle of the city in a stone channel along street column RIVER_C (no north–south street there)
 export const RIVER_C = 5, RIVER_HW = 27, RX = SX[RIVER_C] + 16;   // a wide river: its channel runs just east of street column 5
 for (let r = 0; r < ROWS; r++) VSEG[RIVER_C][r] = "river";
@@ -97,7 +105,6 @@ export const WALL_S = WALL.s;
 // block's middle (a stone retaining wall), north–south streets climb it as stairs. North of the city a shelf at the top
 // level holds a pool, then a sheer cliff up to the mountain plateau; the river falls off it, runs through the city in a
 // channel with a waterfall at every terrace, and leaves under the south wall into the lowland paddies.
-export const LV = [334, 334, 334, 334, 244, 244, 162, 86, 10];
 export const CLIFF_Z = CITY.z0 - 95, PLATEAU = 568, POOL = { x: RX, z: CLIFF_Z + 44, r: 38 }, GORGE = 46;   // falls at the back of a slot GORGE deep
 const sstep = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 /** Terrace level for any z in the city band (steps at block middles). */
@@ -123,7 +130,7 @@ export const RIVER = {
 };
 export const inRiver = (x, z, m = 0) => z > -400 && Math.abs(x - RIVER.x(z)) < RIVER.halfW(z) + m;
 export const ROADS = [{ x: GATE_X - 9, z: CITY.z1, w: 18, d: 4000 }, { x: -4000, z: CITY.z1 + 205, w: 8000, d: 14 }];
-export const PADDIES = [{ x: GATE_X - 340, z: CITY.z1 + 40, w: 310, d: 150 }, { x: GATE_X + 26, z: CITY.z1 + 40, w: RX - 90 - GATE_X - 26, d: 150 }, { x: RX + 90, z: CITY.z1 + 40, w: 240, d: 150 }];
+export const PADDIES = [{ x: GATE_X - 340, z: CITY.z1 + 110, w: 310, d: 80 }, { x: GATE_X + 26, z: CITY.z1 + 40, w: RX - 90 - GATE_X - 26, d: 150 }, { x: RX + 90, z: CITY.z1 + 40, w: 240, d: 150 }];
 export const FIELDS = [
   { x: 60, z: CITY.z0 + 10, w: 120, d: 90, crop: "cabbage" }, { x: 210, z: CITY.z0 + 40, w: 110, d: 120, crop: "wheat" }, { x: 70, z: CITY.z0 + 330, w: 150, d: 100, crop: "wheat" }, { x: 90, z: CITY.z0 + 560, w: 160, d: 110, crop: "cabbage" },
   { x: CITY.x1 + 70, z: CITY.z0 + 20, w: 130, d: 100, crop: "wheat" }, { x: CITY.x1 + 230, z: CITY.z0 + 170, w: 120, d: 110, crop: "cabbage" }, { x: CITY.x1 + 80, z: CITY.z0 + 380, w: 140, d: 90, crop: "cabbage" }, { x: CITY.x1 + 210, z: CITY.z0 + 600, w: 130, d: 100, crop: "wheat" },
@@ -160,12 +167,15 @@ function bumpsAt(x, z) { let h = 0; for (const b of BUMPS) { const d2 = ((x - b.
 // ---- the cliffs inside the city: the drop between two terraces runs along the middle of each block as a jagged rock
 // face (its edge wanders in z, its columns are ragged), crisp only where the lift tower stands against it
 const CLIFF_W = 5;
-const LIFT_X = block(6, 3).x + block(6, 3).w / 2;
+// cargo lifts: two per cliff band, at these block columns (the cliff is straight where a lift stands against it)
+export const LIFT_SPOTS = [[3, 0], [3, 6], [5, 1], [5, 7], [6, 0], [6, 6], [7, 1], [7, 6]].map(([r, c]) => ({ r, c, x: Math.round(block(c, r).x + block(c, r).w / 2), mid: (SZ[r] + SZ[r + 1]) / 2 }));
+const liftAt = (r, x) => LIFT_SPOTS.find((l) => l.r === r && Math.abs(x - l.x) < 26);
 function cliffZ(r, x) {
   const mid = (SZ[r] + SZ[r + 1]) / 2;
-  if (r === 3 && Math.abs(x - LIFT_X) < 24) return mid;
+  if (liftAt(r, x)) return mid;
   return mid + 9 * (vnoise(x / 19, r * 7.3) - 0.5) + 4 * (vnoise(x / 6.5, r * 3.1 + 40) - 0.5);
 }
+const onCliff = (r, x, z) => LV[r] !== LV[r + 1] && Math.abs(z - cliffZ(r, x)) < CLIFF_W + 9;
 /** City terrace height (no river): street lines flat, block halves at their street's level, stairs on north–south streets. */
 function cityH(x, z) {
   const pb = block(...PAGODA_BLOCK);
@@ -175,13 +185,13 @@ function cityH(x, z) {
     const top = LV[r], bot = LV[r + 1], d = top - bot;
     if (d > 0 && Math.abs(z - SZ[r]) > STREET / 2 && Math.abs(z - SZ[r + 1]) > STREET / 2) {
       for (let c = 0; c <= COLS; c++) {
-        if (VSEG[c][r] !== "street" || Math.abs(x - SX[c]) >= STREET / 2) continue;   // a grand stair down the whole segment
+        if (VSEG[c][r] !== "street" || Math.abs(x - SX[c]) >= STAIR_HALF(c)) continue;   // a stair down the whole segment (the main avenue's is double width)
         const z0 = SZ[r] + STREET / 2, z1 = SZ[r + 1] - STREET / 2, t = Math.max(0, Math.min(1, (z - z0) / (z1 - z0)));
         return Math.round(top - d * t);
       }
       const zc = cliffZ(r, x);
       if (z < zc - CLIFF_W - 4) return top; if (z > zc + CLIFF_W + 4) return bot;
-      const crisp = r === 3 && Math.abs(x - LIFT_X) < 24;
+      const crisp = !!liftAt(r, x);
       if (crisp) return z < zc ? top : bot;
       const t = (z - (zc - CLIFF_W)) / (2 * CLIFF_W) + (vnoise(x / 4.3, z / 4.3) - 0.5) * 0.7 + (vnoise(x / 11, z / 3 + r) - 0.5) * 0.5;
       return Math.round(top - d * Math.max(0, Math.min(1, t)));
@@ -237,32 +247,44 @@ export function terrainH(x, z) {
 export const BRIDGES = [];
 for (let r = 0; r <= ROWS; r++) { const w = HSEG[r][RIVER_C - 1], e = HSEG[r][RIVER_C], ok = (k) => k && k !== "none"; if (ok(w) || ok(e)) BRIDGES.push({ r, x: RX, z: SZ[r], y: LV[r], half: RIVER_HW + 12 }); }
 // ---- wood-and-rope transport (sim + rendering share these definitions)
-// The GONDOLA climbs from the riverside station on the plaza terrace (block 5,4) over a pylon on the upper terrace,
-// the north wall and the great cliff, to the mountain shrine on the plateau; two cars shuttle on one rope (one up, one
-// down), hauled by oxen at a capstan in the lower station. The LIFT is a counterweighted cage in a timber tower on the
-// 30-high retaining wall of block (6,3), between the plaza terrace and the palace terrace. People ride both.
-const GB = block(RIVER_C, PLAZA_R), EB = block(6, 3);
-export const GX = RX + 50;                                    // the gondola rope runs straight north along x = GX
+// A transport is a line of stops along a rope/shaft path; cars shuttle stop to stop and back, dwelling at each.
+//   path: rope points (gondolas: support tops; lifts: the shaft bottom/top), stops: [{v: path vertex, board: {x,z,y},
+//   links: [[c,r],…] street junctions it walks to, via: point on the street}], cap in people (a cart counts 4).
+// GONDOLA 1: market-terrace riverside station → pylons → the mountain shrine on the plateau (ox capstan below).
+// GONDOLA 2: the gate terrace (bottom of the city) → a stop on the plaza terrace → the plateau, west of the river.
+// LIFTS: counterweighted cargo lifts, two per cliff band, big enough for an ox cart — carts can only climb by lift.
+const GB = block(RIVER_C, PLAZA_R);
+export const GX = RX + 50;                                    // gondola 1 runs straight north along x = GX
 // Stations are placed with rot 1 (model +x → world north): local (x, z) → world (z, −x). Low station: cable exit local
-// (32, 30, 0), capstan (−12, 0, 0), platform x 6..32 at y 6, stairs at local x 12..16 on +z. High station: cable in at
-// (−24, 30, 0), bullwheel (10.5, 19, 0). Car grip is 21 above its floor.
+// (32, 30, 0), capstan (−12, 0, 0). High station: cable in at (−24, 30, 0), bullwheel (10.5, 19, 0). Car grip 21 above floor.
 export const GONDOLA_LOW = { x: GX, z: GB.z + 40, y: LV[PLAZA_R] };
 export const CAPSTAN = { x: GX, z: GONDOLA_LOW.z + 12, y: LV[PLAZA_R] };
 export const GONDOLA_HIGH = { x: GX, z: CLIFF_Z - 90, y: PLATEAU };
 export const SHRINE = { x: GX + 84, z: CLIFF_Z - 120, y: PLATEAU };                 // the mountain shrine on the plateau
-const ELX = EB.x + EB.w / 2, EMID = EB.z + EB.d / 2;
-export const LIFT = { x: ELX, z: EMID + 7, y: LV[4], stack: Math.round((LV[3] - LV[4]) / 30), wheel: { x: ELX + 11, y: LV[3] - 30 + 48, z: EMID + 7 } };   // towers stacked every 30
+// gondola 2
+const G2B = block(2, ROWS - 1), G2M = block(2, PLAZA_R);
+export const GX2 = Math.round(G2B.x + G2B.w / 2);
+export const G2 = { low: { x: GX2, z: CITY.z1 + 52, y: 0 }, mid: { x: GX2, z: Math.round((SZ[PLAZA_R] + SZ[PLAZA_R + 1]) / 2), y: LV[PLAZA_R] }, high: { x: GX2, z: CLIFF_Z - 90, y: PLATEAU } };
+G2.capstan = { x: GX2, z: G2.low.z + 12, y: G2.low.y };
+export const PLATEAU_BRIDGE = { x: RX, z: CLIFF_Z - 100, y: PLATEAU };   // carries the plateau path over the river between the two gondolas
+const gStop = (v, st, end, links, via) => ({ v, board: { x: st.x + 11, z: st.z + (end === "low" ? -14 : 12), y: st.y }, links, via });
+const pylonOver = (x, r, h) => ({ x, z: Math.round(cliffZ(r, x) - 16), y: LV[r] + h, base: LV[r], h });
+const G2_PYLONS = [{ x: GX2, z: SZ[ROWS], y: LV[ROWS] + 64, base: LV[ROWS], h: 64 }, pylonOver(GX2, 7, 46), pylonOver(GX2, 6, 46), pylonOver(GX2, 5, 46), pylonOver(GX2, 3, 46), { x: GX2, z: CLIFF_Z - 54, y: PLATEAU + 48, base: PLATEAU, h: 48 }];
 export const TRANSPORTS = [
-  { id: "gondola", kind: "gondola", name: "Gondola", cars: 2, cap: 10, travel: 48, dwell: 9, hang: 21, sag: 8,
+  { id: "gondola", kind: "gondola", name: "Gondola", cars: 2, cap: 10, speed: 13, dwell: 9, hang: 21, sag: 8, capstan: CAPSTAN, wheel: { x: GX, y: PLATEAU + 19, z: GONDOLA_HIGH.z - 10.5 },
     path: [{ x: GX, z: GONDOLA_LOW.z - 32, y: LV[PLAZA_R] + 30 }, { x: GX, z: SZ[3] + 28, y: LV[3] + 84 }, { x: GX, z: CLIFF_Z - 54, y: PLATEAU + 48 }, { x: GX, z: GONDOLA_HIGH.z + 24, y: PLATEAU + 30 }],
     pylons: [{ x: GX, z: SZ[3] + 28, y: LV[3], h: 84 }, { x: GX, z: CLIFF_Z - 54, y: PLATEAU, h: 48 }],
-    ends: { A: { x: GX + 11, z: GONDOLA_LOW.z - 14, y: LV[PLAZA_R] }, B: { x: GX + 11, z: GONDOLA_HIGH.z + 12, y: PLATEAU } },
-    links: { A: [[RIVER_C, PLAZA_R], [RIVER_C + 1, PLAZA_R]], B: [] }, via: { A: { x: GX + 11, z: SZ[PLAZA_R] }, B: null }, cost: 160 },
-  { id: "lift", kind: "elevator", name: "Lift", cars: 1, cap: 8, travel: 18, dwell: 7, hang: 0, sag: 0,
-    path: [{ x: ELX, z: EMID + 7, y: LV[4] }, { x: ELX, z: EMID + 7, y: LV[3] }],
-    ends: { A: { x: ELX, z: EMID + 16, y: LV[4] }, B: { x: ELX, z: EMID - 13, y: LV[3] } },
-    links: { A: [[6, 4], [7, 4]], B: [[6, 3], [7, 3]] }, via: { A: { x: ELX, z: SZ[4] }, B: { x: ELX, z: SZ[3] } }, cost: 60 },
+    stops: [gStop(0, GONDOLA_LOW, "low", [[RIVER_C, PLAZA_R], [RIVER_C + 1, PLAZA_R]], { x: GX + 11, z: SZ[PLAZA_R] }), gStop(3, GONDOLA_HIGH, "high", [], null)] },
+  { id: "gondola2", kind: "gondola", name: "Mountain gondola", cars: 2, cap: 10, speed: 14, dwell: 10, hang: 21, sag: 8, capstan: G2.capstan, wheel: { x: GX2, y: PLATEAU + 19, z: G2.high.z - 10.5 },
+    path: [{ x: GX2, z: G2.low.z - 32, y: G2.low.y + 30 }, ...G2_PYLONS.slice(0, 4).map((p) => ({ x: p.x, z: p.z, y: p.y })), { x: GX2, z: G2.mid.z, y: G2.mid.y + 30 }, ...G2_PYLONS.slice(4).map((p) => ({ x: p.x, z: p.z, y: p.y })), { x: GX2, z: G2.high.z + 24, y: PLATEAU + 30 }],
+    pylons: G2_PYLONS.map((p) => ({ x: p.x, z: p.z, y: p.base, h: p.h })),
+    stops: [gStop(0, G2.low, "low", [[2, ROWS], [3, ROWS]], { x: GX2 + 11, z: SZ[ROWS] }), { v: 5, board: { x: GX2 + 11, z: G2.mid.z + 12, y: G2.mid.y }, links: [[2, PLAZA_R], [3, PLAZA_R], [2, PLAZA_R + 1], [3, PLAZA_R + 1]], via: null }, gStop(8, G2.high, "high", [], null)] },
+  ...LIFT_SPOTS.map((l, k) => ({ id: "lift" + k, kind: "elevator", name: "Cargo lift", cars: 1, cap: 10, speed: 7, dwell: 8, hang: 0, sag: 0, x: l.x, z: l.mid + 18, r: l.r, phase: k * 7.3,
+    path: [{ x: l.x, z: l.mid + 18, y: LV[l.r + 1] }, { x: l.x, z: l.mid + 18, y: LV[l.r] }],
+    stops: [{ v: 0, board: { x: l.x, z: l.mid + 42, y: LV[l.r + 1] }, links: [[l.c, l.r + 1], [l.c + 1, l.r + 1]], via: { x: l.x, z: SZ[l.r + 1] } },
+            { v: 1, board: { x: l.x, z: l.mid - 8, y: LV[l.r] }, links: [[l.c, l.r], [l.c + 1, l.r]], via: { x: l.x, z: SZ[l.r] } }] })),
 ];
+export const LIFTS = TRANSPORTS.filter((T) => T.kind === "elevator");
 /** Mooring masts where cargo airships call (y = ground). */
 export const MASTS = [
   { x: PALACE.x + PALACE.w - 46, z: PALACE.z + PALACE.d - 140 },
@@ -273,29 +295,43 @@ export const MASTS = [
 ];
 /** Rects kept free of houses/trees for the transport (corridors, stations). */
 export const RESERVED = [
-  { x0: GX - 10, x1: GX + 10, z0: SZ[0], z1: SZ[PLAZA_R] },                         // under the gondola rope
+  { x0: GX - 10, x1: GX + 10, z0: SZ[0], z1: SZ[PLAZA_R] },                         // under gondola 1's rope
   { x0: RX - RIVER_HW - 5, x1: RX + RIVER_HW + 5, z0: CITY.z0 - 40, z1: CITY.z1 + 30 },   // the river and its banks
-  { x0: GB.x - 2, x1: GB.x + GB.w + 2, z0: GB.z - 2, z1: GB.z + GB.d + 2 },          // the lower station's block
-  { x0: ELX - 16, x1: ELX + 26, z0: EB.z, z1: EB.z + EB.d },                        // the lift and its two approaches
-  ...[4].map((k) => ({ x0: block(1, 6).x + 8, x1: block(1, 6).x + 32, z0: block(1, 6).z + 2, z1: block(1, 6).z + 28 })),   // the district's mooring mast
+  { x0: GB.x - 2, x1: GB.x + GB.w + 2, z0: GB.z - 2, z1: GB.z + GB.d + 2 },          // gondola 1's lower station block
+  { x0: GX2 - 12, x1: GX2 + 12, z0: SZ[0], z1: SZ[ROWS] },                           // under gondola 2's rope
+  { x0: GX2 - 34, x1: GX2 + 34, z0: SZ[ROWS] - 12, z1: G2.low.z + 36 }, { x0: GX2 - 30, x1: GX2 + 30, z0: G2.mid.z - 24, z1: G2.mid.z + 26 },   // its stations
+  ...LIFT_SPOTS.map((l) => ({ x0: l.x - 26, x1: l.x + 26, z0: l.mid - 20, z1: l.mid + 50 })),   // lifts + their aprons
+  ...[3, 5, 6, 7].map((r) => ({ x0: SX[AV_C] - STREET - 2, x1: SX[AV_C] + STREET + 2, z0: SZ[r], z1: SZ[r + 1] })),   // the grand stair
+  { x0: block(1, 6).x + 8, x1: block(1, 6).x + 32, z0: block(1, 6).z + 2, z1: block(1, 6).z + 28 },   // the district's mooring mast
 ];
 export const isReserved = (x0, z0, x1, z1) => RESERVED.some((r) => x1 > r.x0 && x0 < r.x1 && z1 > r.z0 && z0 < r.z1);
-/** Where car k is at time t: {s 0..1 along the path, dock "A"|"B"|null, rem: seconds left in this dock}. */
+// path arc lengths + per-stop s, cached on each transport
+function geom(T) {
+  if (T._g) return T._g;
+  const P = T.path, L = []; let tot = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z); L.push(l); tot += l; }
+  const cum = [0]; for (const l of L) cum.push(cum[cum.length - 1] + l);
+  const ss = T.stops.map((st) => cum[st.v] / tot), legs = []; for (let i = 0; i < ss.length - 1; i++) legs.push(Math.max(4, (cum[T.stops[i + 1].v] - cum[T.stops[i].v]) / T.speed));
+  // timeline: dwell@0, leg 0→1, dwell@1, …, dwell@n-1, leg n-1→n-2, dwell@n-2, …, leg 1→0
+  const seq = [], n = ss.length; let t = 0;
+  for (let i = 0; i < n; i++) { seq.push({ t, d: T.dwell, dock: i, next: i < n - 1 ? 1 : -1 }); t += T.dwell; if (i < n - 1) { seq.push({ t, d: legs[i], a: ss[i], b: ss[i + 1] }); t += legs[i]; } }
+  for (let i = n - 1; i > 0; i--) { seq.push({ t, d: legs[i - 1], a: ss[i], b: ss[i - 1] }); t += legs[i - 1]; if (i - 1 > 0) { seq.push({ t, d: T.dwell, dock: i - 1, next: -1 }); t += T.dwell; } }
+  return (T._g = { L, tot, ss, seq, period: t });
+}
+/** Where car k is at time t: {s 0..1 along the path, dock: stop index | null, next: direction (+1/-1) it leaves in, rem: s left docked}. */
 export function carState(T, k, t) {
-  const P = 2 * (T.dwell + T.travel), u = (((t + (k * P) / T.cars) % P) + P) % P, ease = (v) => v * v * (3 - 2 * v);
-  if (u < T.dwell) return { s: 0, dock: "A", rem: T.dwell - u };
-  if (u < T.dwell + T.travel) return { s: ease((u - T.dwell) / T.travel), dock: null, dir: 1 };
-  if (u < 2 * T.dwell + T.travel) return { s: 1, dock: "B", rem: 2 * T.dwell + T.travel - u };
-  return { s: 1 - ease((u - 2 * T.dwell - T.travel) / T.travel), dock: null, dir: -1 };
+  const g = geom(T), u = ((((t + (T.phase ?? 0)) + (k * g.period) / T.cars) % g.period) + g.period) % g.period, ease = (v) => v * v * (3 - 2 * v);
+  for (const q of g.seq) if (u < q.t + q.d) return q.dock !== undefined ? { s: g.ss[q.dock], dock: q.dock, next: q.next, rem: q.t + q.d - u } : { s: q.a + (q.b - q.a) * ease((u - q.t) / q.d), dock: null, dir: Math.sign(q.b - q.a) };
+  return { s: 0, dock: 0, next: 1, rem: 0 };
 }
 /** Point on a transport's rope/shaft at s (gondola spans sag between supports); y is the car's floor. */
 export function carPos(T, s) {
-  const P = T.path, L = []; let tot = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z); L.push(l); tot += l; }
-  let d = s * tot, i = 0; while (i < L.length - 1 && d > L[i]) { d -= L[i]; i++; }
-  const u = Math.max(0, Math.min(1, d / L[i])), a = P[i], b = P[i + 1];
+  const g = geom(T), P = T.path;
+  let d = s * g.tot, i = 0; while (i < g.L.length - 1 && d > g.L[i]) { d -= g.L[i]; i++; }
+  const u = Math.max(0, Math.min(1, d / g.L[i])), a = P[i], b = P[i + 1];
   return { x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, y: a.y + (b.y - a.y) * u - T.sag * Math.sin(Math.PI * u) - T.hang, rope: a.y + (b.y - a.y) * u - T.sag * Math.sin(Math.PI * u) };
 }
 
+BRIDGES.push({ r: -1, x: PLATEAU_BRIDGE.x, z: PLATEAU_BRIDGE.z, y: PLATEAU, half: RIVER_HW + 12 });
 /** Walking height: the terrain, except on bridges (deck level). */
 export function groundH(x, z) {
   for (const b of BRIDGES) if (Math.abs(x - b.x) <= b.half && Math.abs(z - b.z) <= STREET / 2) return b.y;
@@ -397,8 +433,8 @@ export function layout() {
       const z = south ? b.z + b.d - 11 : b.z + 11;
       put("teahouse", x, z, south ? 0 : 2, houseVariant("teahouse"));
       houses.push({ type: "teahouse", x, z, south, c, r, node: [c, south ? r + 1 : r], doorX: x, outZ: south ? b.z + b.d + 3 : b.z - 3, inZ: south ? z + 6 : z - 6, roofY: 37 });
-      for (let zz = south ? b.z + 6 : b.z + 26; south ? zz < b.z + b.d - 26 : zz < b.z + b.d - 6; zz += 11) tree(x + rnd(-4, 4), zz, ["bamboo", "tree_blossom", "tree_pine", "tree_round"]);
-    } else { for (let zz = b.z + 6; zz < b.z + b.d - 4; zz += 10) tree(x + rnd(-5, 5), zz, ["bamboo", "tree_blossom", "tree_round", "tree_fruit"]); put("well", x, b.z + b.d / 2, 0); }
+      for (let zz = south ? b.z + 6 : b.z + 26; south ? zz < b.z + b.d - 26 : zz < b.z + b.d - 6; zz += 11) if (!onCliff(r, x, zz)) tree(x + rnd(-4, 4), zz, ["bamboo", "tree_blossom", "tree_pine", "tree_round"]);
+    } else { for (let zz = b.z + 6; zz < b.z + b.d - 4; zz += 10) if (!onCliff(r, x, zz)) tree(x + rnd(-5, 5), zz, ["bamboo", "tree_blossom", "tree_round", "tree_fruit"]); if (!onCliff(r, x, b.z + b.d / 2)) put("well", x, b.z + b.d / 2, 0); }
   }
   // winding alleys: gardens and lanterns along both sides of the path, leaving the doorways clear
   for (let r = 1; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
@@ -458,7 +494,15 @@ export function layout() {
   if (has("bridge_stone")) for (const b of BRIDGES) for (const dx of [-26, 0, 26]) put("bridge_stone", b.x + dx, b.z, 0, { y: b.y - 10 });   // three arches span the wide river
   if (has("gondola_station_low")) { put("gondola_station_low", GONDOLA_LOW.x, GONDOLA_LOW.z, 1); for (const dz of [-30, -20, -10]) ob(GX, GONDOLA_LOW.z + dz, 6); }
   if (has("gondola_station_high")) put("gondola_station_high", GONDOLA_HIGH.x, GONDOLA_HIGH.z, 1);
-  if (has("elevator_tower")) { for (let k = 0; k < LIFT.stack; k++) put("elevator_tower", LIFT.x, LIFT.z, 0, { y: LIFT.y + 30 * k }); ob(LIFT.x + 20, LIFT.z, 5); }
+  // cargo lifts: a stack of shaft sections from the lower terrace up the cliff (scaled to fit the drop exactly), the head gantry on the clifftop
+  for (const T of LIFTS) { const bot = T.path[0].y, top = T.path[1].y, n = Math.max(1, Math.round((top - bot) / 30)), sec = (top - bot) / n;
+    if (has("cargo_lift_section")) { for (let k = 0; k < n; k++) { const st = put("cargo_lift_section", T.x, T.z, 0, { y: bot + sec * k }); st.scale = [1, sec / 30, 1]; } if (has("cargo_lift_head")) put("cargo_lift_head", T.x, T.z, 0, { y: top }); }
+    else if (has("elevator_tower")) for (let k = 0; k < n; k++) { const st = put("elevator_tower", T.x, T.z, 0, { y: bot + sec * k }); st.scale = [3.2, sec / 30, 3.2]; }
+    for (const sx of [-1, 1]) ob(T.x + sx * 21, T.z, 3); }
+  // gondola 2: ox-hauled bottom station on the gate terrace, a stop on the plaza terrace, the top station on the plateau, and a bridge over the river up there
+  if (has("gondola_station_low")) { put("gondola_station_low", G2.low.x, G2.low.z, 1); for (const dz of [-30, -20, -10]) ob(GX2, G2.low.z + dz, 6); }
+  if (has("gondola_station_high")) { put("gondola_station_high", G2.mid.x, G2.mid.z, 1); put("gondola_station_high", G2.high.x, G2.high.z, 1); }
+  if (has("bridge_stone")) for (const dx of [-26, 0, 26]) put("bridge_stone", PLATEAU_BRIDGE.x + dx, PLATEAU_BRIDGE.z, 0, { y: PLATEAU - 10 });
   put("pagoda", SHRINE.x, SHRINE.z, 0); for (const sx of [-1, 1]) if (has("lion_statue")) put("lion_statue", SHRINE.x + sx * 12, SHRINE.z + 24, 0);
   if (has("incense_burner")) put("incense_burner", SHRINE.x, SHRINE.z + 34, 0);
   for (let k = 0; k < 16; k++) { const a = k / 16 * 6.28, d = rnd(58, 80); tree(SHRINE.x + Math.cos(a) * d, SHRINE.z + Math.sin(a) * d * 0.8, ["tree_pine", "tree_pine", "tree_blossom", "bamboo"]); }
@@ -470,7 +514,7 @@ export function layout() {
   const mountainWall = (x, z) => flankRise(x < (CITY.x0 + CITY.x1) / 2 ? CITY.x0 - 70 : CITY.x1 + 70, z) > 45;
   for (let x = CITY.x0 - 9; x < CITY.x1 + 9; x += 22) { const cx = x + 11; if (Math.abs(cx - RX) < 62) continue;
     if (!mountainWall(cx, CITY.z0 - 1)) put("wall", cx, CITY.z0 - 1, 0, { y: lowAt([[cx - 11, CITY.z0 - 1], [cx + 11, CITY.z0 - 1]]) });
-    if (Math.abs(cx - GATE_X) >= 26) put("wall", cx, CITY.z1 + 1, 2, { y: lowAt([[cx - 11, CITY.z1 + 1], [cx + 11, CITY.z1 + 1]]) }); }
+    if (Math.abs(cx - GATE_X) >= 26 && Math.abs(cx - GX2) >= 22) put("wall", cx, CITY.z1 + 1, 2, { y: lowAt([[cx - 11, CITY.z1 + 1], [cx + 11, CITY.z1 + 1]]) }); }
   for (let z = CITY.z0 - 9; z < CITY.z1 + 9; z += 22) for (const [x, rot] of [[CITY.x0 - 1, 1], [CITY.x1 + 1, 3]]) {
     const pts = [[x, z], [x, z + 22]];
     if (pts.some(([px, pz]) => mountainWall(px, pz)) || Math.abs(terrainH(x, z) - terrainH(x, z + 22)) > 20) continue;   // the mountain (or a terrace cliff) does the job
@@ -575,9 +619,13 @@ export function groundTexture() {
     F(b.x - 2, b.z - 2, b.w + 4, b.d + 4, "#d0ccc0"); F(b.x, b.z, b.w, b.d, "#6cc04c");
     for (let i = 0; i < 320; i++) F(b.x + rnd(0, b.w - 2), b.z + rnd(0, b.d - 1), rndi(1, 2), 1, pick(GR.concat(["#4ea23a", "#90d866", "#ffffff", "#ffe050"])));
     if (LV[r] === LV[r + 1]) { F(b.x + 8, b.z + b.d / 2 - 4, b.w - 16, 8, "#c8945a"); for (let x = b.x + 9; x < b.x + b.w - 9; x += 3) F(x, b.z + b.d / 2 - 3 + (x % 2), 1, 6, "#3aa848"); } }
+  // the grand stair down the main avenue: double width, stone treads with a kerb on both sides
+  for (let r = 0; r < ROWS; r++) { if (LV[r] === LV[r + 1] || VSEG[AV_C][r] !== "street") continue;
+    const x0 = SX[AV_C] - STREET, z0 = SZ[r] + STREET / 2, z1 = SZ[r + 1] - STREET / 2; F(x0, z0, 2 * STREET, z1 - z0, "#c8b48a");
+    for (let z = z0; z < z1; z += 2) for (let x = x0 + 2; x < x0 + 2 * STREET - 2; x += 6) F(x + (z / 2 % 2 ? 3 : 0), z, 5, 1, pick(SLAB)); }
   // the rock faces in the middle of the blocks (and garden strips): grey stone with moss and grass at the lip and foot
   for (let r = 0; r < ROWS; r++) { if (LV[r] === LV[r + 1]) continue;
-    for (let x = CITY.x0; x < CITY.x1; x += 2) { if (VSEG.some((col, c) => col[r] === "street" && Math.abs(x + 1 - SX[c]) < STREET / 2)) continue;
+    for (let x = CITY.x0; x < CITY.x1; x += 2) { if (VSEG.some((col, c) => col[r] === "street" && Math.abs(x + 1 - SX[c]) < STAIR_HALF(c))) continue;
       const zc = cliffZ(r, x);
       for (let z = Math.floor(zc - CLIFF_W - 5); z < zc + CLIFF_W + 5; z += 2) { const k = hash(x, z); F(x, z, 2, 2, k > 0.8 ? "#6a7a52" : k > 0.6 ? "#9a958c" : k > 0.3 ? "#8e8a84" : "#7c7872"); } } }
   { const pb = block(...PAGODA_BLOCK); F(pb.x - 2, pb.z - 2, pb.w + 4, pb.d + 4, "#d0ccc0"); F(pb.x, pb.z, pb.w, pb.d, "#6cc04c"); for (let i = 0; i < 300; i++) F(pb.x + rnd(0, pb.w - 2), pb.z + rnd(0, pb.d - 1), 1, 1, pick(GR.concat(["#ffffff", "#f8b8c8"]))); }
@@ -642,7 +690,7 @@ function heightfield(x0, x1, z0, z1, s, H, colorAt) {
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3)); g.setIndex(ind);
   return g;
 }
-const hash = (x, z) => { const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return s - Math.floor(s); };
+function hash(x, z) { const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return s - Math.floor(s); }
 
 /** Voxel mountains beyond the river (2-voxel columns), reaching far past both edges of the world. */
 // Mountain range north of the river: irregular peaks (seeded, so the layout is stable) — a tall back range and

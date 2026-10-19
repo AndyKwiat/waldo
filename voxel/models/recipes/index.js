@@ -5,6 +5,7 @@ import { house, pagoda, cityGate, fortGate, wallSegment, watchtower, stall, pavi
 import { treeCamphor, treeGinkgo, gardenFlower, gardenPond } from "./landmarks.js";
 import { palaceGreatHall, lionStatue, dragonStatue, incenseBurner } from "./palace.js";
 import { bridgeStone, waterGate, pulleyWheel, capstan, gondolaStationLow, gondolaStationHigh, gondolaCar, elevatorTower, elevatorCage, airshipCargo, airshipSmall, mooringMast } from "./tech.js";
+import { cargoLiftSection, cargoLiftHead, cargoLiftCage } from "./cargo.js";
 import { tree, lanternPost, well, haystack, jars, crateStack, target, rickshaw, oxcart, sedan, barrow, boat, waterwheel } from "./props.js";
 
 export const RECIPES = {
@@ -19,4 +20,5 @@ export const RECIPES = {
   bridge_stone: bridgeStone, water_gate: waterGate, pulley_wheel: pulleyWheel, capstan,
   gondola_station_low: gondolaStationLow, gondola_station_high: gondolaStationHigh, gondola_car: gondolaCar,
   elevator_tower: elevatorTower, elevator_cage: elevatorCage, airship_cargo: airshipCargo, airship_small: airshipSmall, mooring_mast: mooringMast,
+  cargo_lift_section: cargoLiftSection, cargo_lift_head: cargoLiftHead, cargo_lift_cage: cargoLiftCage,
 };

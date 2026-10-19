@@ -115,7 +115,8 @@ const VIEWS = {
   alley: () => { const e = W.EDGE_LIST.find((q) => q.type === "alley" && q.a[0] > 0) ?? W.EDGE_LIST[0], x = (W.SX[e.a[0]] + W.SX[e.b[0]]) / 2, z = W.alleyZ(e.a[1], e.a[0], x); return [[x - 26, 75, z + 34], [x + 6, 0, z]]; },
   river: () => [[W.RX + 120, 80, W.SZ[6] + 140], [W.RX, 0, W.SZ[5]]],
   gondola: () => [[W.GX + 110, 60, W.GONDOLA_LOW.z + 90], [W.GX, 30, W.GONDOLA_LOW.z - 40]],
-  lift: () => [[W.LIFT.x + 70, 30, W.LIFT.z + 70], [W.LIFT.x, 18, W.LIFT.z - 4]],
+  lift: () => { const T = W.LIFTS[1]; return [[T.x + 90, 50, T.z + 110], [T.x, 40, T.z - 10]]; },
+  gondola2: () => [[W.GX2 - 140, 110, W.G2.mid.z + 160], [W.GX2, 60, W.G2.mid.z - 40]],
   shrine: () => [[W.SHRINE.x + 120, 60, W.SHRINE.z + 130], [W.SHRINE.x + 20, 10, W.SHRINE.z + 20]],
   falls: () => [[W.RX + 200, 180, W.CITY.z0 + 230], [W.RX, 130, W.CLIFF_Z - 20]],
   mountain: () => [[W.CITY.x1 + 500, 650, W.CITY.z1 + 700], [W.CENTER.x + 80, -60, W.CENTER.z - 120]],
@@ -198,7 +199,7 @@ async function buildStatics() {
   await Promise.all([...groups].map(async ([key, list]) => {
     const geo = await modelGeometry(list[0].model, list[0].remap, key);
     const im = new THREE.InstancedMesh(geo, vmat, list.length); im.castShadow = im.receiveShadow = true;
-    list.forEach((s, i) => { Q.setFromAxisAngle(UP, s.rot * Math.PI / 2); im.setMatrixAt(i, M4.compose(V.set(s.x, s.y, s.z), Q, SC.set(1, 1, 1))); });
+    list.forEach((s, i) => { Q.setFromAxisAngle(UP, s.rot * Math.PI / 2); im.setMatrixAt(i, M4.compose(V.set(s.x, s.y, s.z), Q, s.scale ? SC.set(...s.scale) : SC.set(1, 1, 1))); });
     im.computeBoundingSphere(); scene.add(im);
   }));
 }

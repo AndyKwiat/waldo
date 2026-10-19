@@ -1,7 +1,7 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { TRANSPORTS, carState, carPos, SHRINE, groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
+import { TRANSPORTS, isStairSeg, carState, carPos, SHRINE, groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 // ---- navigation graph from the world's street network: pedestrians use streets + alleys, vehicles streets only
@@ -10,12 +10,16 @@ export const NODES = []; for (let r = 0; r < NR; r++) for (let c = 0; c < NC; c+
 // transport stations are extra graph nodes (ids after the street grid): each end walks to its nearby junctions (via a
 // point on the street), and a "ride" edge joins the two ends — routes that take it ride the gondola / lift
 export const STATIONS = [];
-TRANSPORTS.forEach((T, ti) => { for (const end of ["A", "B"]) { NODES.push({ x: T.ends[end].x, z: T.ends[end].z }); STATIONS.push({ ti, end, id: NODES.length - 1 }); } });
-const stationId = (ti, end) => STATIONS.find((s) => s.ti === ti && s.end === end).id;
-const ALL_EDGES = [...EDGE_LIST.map((e) => ({ ...e, ia: nid(...e.a), ib: nid(...e.b) }))];
+TRANSPORTS.forEach((T, ti) => T.stops.forEach((st, si) => { NODES.push({ x: st.board.x, z: st.board.z }); STATIONS.push({ ti, si, id: NODES.length - 1 }); }));
+const stationId = (ti, si) => STATIONS.find((s) => s.ti === ti && s.si === si).id;
+const ALL_EDGES = [...EDGE_LIST.map((e) => ({ ...e, ia: nid(...e.a), ib: nid(...e.b), stair: e.a[0] === e.b[0] && isStairSeg(e.a[0], Math.min(e.a[1], e.b[1])) }))];
 TRANSPORTS.forEach((T, ti) => {
-  for (const end of ["A", "B"]) for (const [c, r] of T.links[end]) ALL_EDGES.push({ type: "walk", ia: stationId(ti, end), ib: nid(c, r), pts: T.via[end] ? [T.via[end]] : [] });
-  ALL_EDGES.push({ type: "ride", ia: stationId(ti, "A"), ib: stationId(ti, "B"), ti, cost: T.cost });
+  T.stops.forEach((st, si) => { for (const [c, r] of st.links) ALL_EDGES.push({ type: "walk", ia: stationId(ti, si), ib: nid(c, r), pts: st.via ? [st.via] : [] }); });
+  // a ride edge between every pair of stops: the time it takes (≈ rope length / speed + an average wait) in walking units
+  for (let i = 0; i < T.stops.length; i++) for (let j = i + 1; j < T.stops.length; j++) {
+    const a = carPos(T, 0), dz = Math.abs(T.path[T.stops[j].v].z - T.path[T.stops[i].v].z) + Math.abs(T.path[T.stops[j].v].y - T.path[T.stops[i].v].y); void a;
+    ALL_EDGES.push({ type: "ride", ia: stationId(ti, i), ib: stationId(ti, j), ti, from: i, to: j, cost: 30 + dz * (T.kind === "elevator" ? 0.6 : 0.45) });
+  }
 });
 const NNA = NODES.length;
 export const EDGES = ALL_EDGES.map((e) => [e.ia, e.ib]);
@@ -30,7 +34,11 @@ function floyd(edges) {
 // alleys are narrow: they cost 1.2× their length + 30, so through-traffic stays on the wide streets and alleys carry local trips
 const elen = (a, b, e) => (e.type === "ride" ? e.cost : e.type === "walk" ? [NODES[a], ...e.pts, NODES[b]].reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) : e.pts ? e.pts.reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) * 1.2 + 30 : Math.hypot(NODES[a].x - NODES[b].x, NODES[a].z - NODES[b].z));
 const [DIST, NEXT] = floyd(EDGES.map(([a, b], i) => [a, b, elen(a, b, ALL_EDGES[i])]));
-const [VDIST, VNEXT] = floyd(EDGES.filter((_, i) => ALL_EDGES[i].type === "street").map(([a, b]) => [a, b, elen(a, b, {})]));
+// carts can't climb stairs: their graph is the level streets + the cargo lifts (and the walks to their aprons)
+const vehEdge = (e) => (e.type === "street" && !e.stair) || (e.type === "walk" && TRANSPORTS[STATIONS.find((q) => q.id === e.ia)?.ti]?.kind === "elevator") || (e.type === "ride" && TRANSPORTS[e.ti].kind === "elevator");
+const [VDIST, VNEXT] = floyd(EDGES.filter((_, i) => vehEdge(ALL_EDGES[i])).map(([a, b]) => { const i = EDGES.findIndex((q) => q[0] === a && q[1] === b); return [a, b, elen(a, b, ALL_EDGES[i].type === "street" ? {} : ALL_EDGES[i])]; }));
+// patrols march the streets and stairs but never ride
+const [PDIST, PNEXT] = floyd(EDGES.filter((_, i) => ALL_EDGES[i].type === "street").map(([a, b]) => [a, b, elen(a, b, {})]));
 const PED_NODES = [...new Set(EDGES.flat())].filter((n) => n < NN);   // street junctions only (stations are reached via routes)
 
 // ---- congestion-aware routing: every walker's route is a fresh Dijkstra over the 81-node street graph where each
@@ -67,7 +75,7 @@ function streetElement(x, z) {
 const EDGE_IDX = new Map(); EDGES.forEach(([a, b], i) => { EDGE_IDX.set(a + ":" + b, i); EDGE_IDX.set(b + ":" + a, i); });
 const GATE_NODE = nid(AV_C, ROWS);
 const VEH_NODES = PED_NODES.filter((n) => n !== GATE_NODE && VDIST[GATE_NODE][n] < 1e9);   // vehicles stay on the street network reachable from the gate
-const SEDGES = EDGES.filter(([a, b], i) => ALL_EDGES[i].type === "street" && VEH_NODES.includes(a) && VEH_NODES.includes(b));
+const SEDGES = EDGES.filter(([a, b], i) => ALL_EDGES[i].type === "street" && !ALL_EDGES[i].stair && VEH_NODES.includes(a) && VEH_NODES.includes(b));
 
 const hyp = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const segAnchor = (x, z, n1, n2, alley = false) => ({ x, z, o: NODES[n1].z === NODES[n2].z ? "h" : "v", nodes: [n1, n2], alley });
@@ -116,7 +124,7 @@ function buildPath(e, from, to) {
     net.push(nodePt(CENTER_LINE, chain[0])); lanes.push(SL);
     for (let k = 1; k < chain.length; k++) {
       const info = EDGE_INFO.get(chain[k - 1] + ":" + chain[k]);
-      if (info?.type === "ride") { const st = STATIONS.find((q) => q.id === chain[k]); net.push({ x: NODES[chain[k]].x, z: NODES[chain[k]].z, ride: info.ti, to: st.end }); lanes.push(0); continue; }
+      if (info?.type === "ride") { const a = STATIONS.find((q) => q.id === chain[k - 1]), b = STATIONS.find((q) => q.id === chain[k]); net.push({ x: NODES[chain[k]].x, z: NODES[chain[k]].z, ride: info.ti, from: a.si, to: b.si }); lanes.push(0); continue; }
       const stn = chain[k] >= NN;
       for (const q of edgePts(CENTER_LINE, chain[k - 1], chain[k])) { net.push(q); lanes.push(stn || chain[k - 1] >= NN ? 2 : AL); }
       net.push(nodePt(CENTER_LINE, chain[k])); lanes.push(stn ? 0.5 : SL); } }
@@ -158,7 +166,7 @@ export function createSim(W) {
       [Math.abs(p.z - zN), () => segAnchor(p.x, zN, nid(cx, PLAZA_R), nid(cx + 1, PLAZA_R))], [Math.abs(p.z - zS), () => segAnchor(p.x, zS, nid(cx, PLAZA_R + 1), nid(cx + 1, PLAZA_R + 1))]].sort((a, b) => a[0] - b[0]);
     void c; STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: opts[0][1](), approach: [p], hide: false }); }
   const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[W.pagoda.r], nid(W.pagoda.c, W.pagoda.r), nid(W.pagoda.c + 1, W.pagoda.r)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true, lane: 2.6 };
-  const gB = STATIONS.find((q) => q.ti === 0 && q.end === "B").id;
+  const gB = stationId(0, 1);
   const SHRINEP = { kind: "shrine", x: SHRINE.x + rnd(-6, 6), z: SHRINE.z + 40, anchor: nodeAnchor(gB), approach: [{ x: SHRINE.x, z: SHRINE.z + 46 }], hide: false };
   const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 3)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true, lane: 3.8 };   // the gatehouse passage is ~12 wide
   const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = 0;
@@ -322,21 +330,25 @@ export function createSim(W) {
   // ---- riding the gondola / lift: wait at the near end until a car is docked with room, ride it, step off at the far end
   const LOAD = TRANSPORTS.map((T) => new Array(T.cars).fill(0));
   const RIDE_TXT = { gondola: ["waiting for the gondola", "riding the gondola"], elevator: ["waiting for the lift", "riding the lift"] };
+  const weight = (e) => (e.kind === "vehicle" ? 4 : 1);
   function rideStep(e, p, dt) {
-    const T = TRANSPORTS[p.ride], from = p.to === "A" ? "B" : "A";
+    const T = TRANSPORTS[p.ride], dir = Math.sign(p.to - p.from), up = T.path[T.stops[p.to].v].y > T.path[T.stops[p.from].v].y;
     if (!e.ride) { e.ride = { phase: "wait", act: e.activity }; e.activity = RIDE_TXT[T.kind][0]; }
     const R = e.ride;
     if (R.phase === "wait") {
       e.mv = false; e.waiting = true; e.waitT = (e.waitT ?? 0) + dt;
-      for (let k = 0; k < T.cars; k++) { const st = carState(T, k, T_now); if (st.dock === from && st.rem > 1.2 && LOAD[p.ride][k] < T.cap) {
-        R.phase = "ride"; R.k = k; LOAD[p.ride][k]++; R.nocol = e.nocol; e.nocol = true; e.waiting = false;
-        R.ox = rnd(-3, 3); R.oz = rnd(-2.2, 2.2); e.activity = RIDE_TXT[T.kind][1] + (T.kind === "gondola" ? (p.to === "B" ? " up to the mountain shrine" : " down to the city") : p.to === "B" ? " up to the palace terrace" : " down to the market"); break; } }
+      for (let k = 0; k < T.cars; k++) { const st = carState(T, k, T_now); if (st.dock === p.from && st.next === dir && st.rem > 1.2 && LOAD[p.ride][k] + weight(e) <= T.cap) {
+        R.phase = "ride"; R.k = k; LOAD[p.ride][k] += weight(e); R.nocol = e.nocol; e.nocol = true; e.waiting = false;
+        const big = T.kind === "elevator"; R.ox = e.kind === "vehicle" ? 0 : rnd(big ? -12 : -3, big ? 12 : 3); R.oz = e.kind === "vehicle" ? 0 : rnd(big ? -12 : -2.2, big ? 12 : 2.2);
+        if (e.kind === "vehicle") { e.yaw = e.head = Math.PI / 2 * (chance(0.5) ? 1 : -1) + Math.PI / 2; }   // carts roll on lengthwise (along z)
+        e.activity = T.kind === "gondola" ? RIDE_TXT.gondola[1] + (up ? (p.to === T.stops.length - 1 ? " up to the mountain" : " up the mountain") : " down to the city") : (e.kind === "vehicle" ? "being hauled " : "riding the lift ") + (up ? "up the cliff" : "down the cliff");
+        break; } }
       return false;
     }
     const st = carState(T, R.k, T_now), pos = carPos(T, st.s);
     e.x = pos.x + R.ox; e.z = pos.z + R.oz; e.absY = pos.y; e.mv = false; e.spd = 0;
-    if (st.dock === p.to) { // arrived: step off onto the platform at the far end
-      const end = T.ends[p.to]; e.x = end.x + rnd(-1.5, 1.5); e.z = end.z + rnd(-1.5, 1.5); e.absY = undefined; e.nocol = R.nocol; LOAD[p.ride][R.k]--;
+    if (st.dock === p.to) { // arrived: step off onto the platform / apron at that stop
+      const b = T.stops[p.to].board; e.x = b.x + rnd(-1.5, 1.5); e.z = b.z + rnd(-1.5, 1.5); e.absY = undefined; e.nocol = R.nocol; LOAD[p.ride][R.k] -= weight(e);
       e.activity = R.act; e.ride = null; e.pi++; e.mv = true; return e.pi >= e.path.length;
     }
     return false;
@@ -361,7 +373,15 @@ export function createSim(W) {
     const v = e.cur * dt; e.x += ux * v; e.z += uz * v; e.mv = true; e.hx = ux; e.hz = uz; e.face = Math.atan2(ux, uz); return false;
   };
   const stepToward = (e, tx, tz, speed, dt, stop = 0.6) => { const dx = tx - e.x, dz = tz - e.z, d = Math.hypot(dx, dz); if (d <= stop) return true; const v = Math.min(d, speed * dt); e.x += (dx / d) * v; e.z += (dz / d) * v; e.face = Math.atan2(dx, dz); e.hx = dx / d; e.hz = dz / d; e.spd = dt > 0 ? v / dt : speed; e.mv = true; return false; };
-  const planDrive = (e) => { const here = nearestNode(e.x, e.z, VEH_NODES); let to, tries = 0; do { to = pick(VEH_NODES); } while ((to === here || VDIST[here][to] < 120) && ++tries < 50); const pts = [nodePt(CENTER_LINE, here)]; let n = here, g = 0; while (n !== to && g++ < 90) { n = VNEXT[n][to]; if (n < 0) break; pts.push(nodePt(CENTER_LINE, n)); } e.path = keepRight(pts, pts.map(() => streetLane(e))); e.pi = 0; };
+  const planDrive = (e) => {
+    const person = e.kind === "person", D = person ? PDIST : VDIST, NX = person ? PNEXT : VNEXT;
+    const here = nearestNode(e.x, e.z, VEH_NODES); let to, tries = 0; do { to = pick(VEH_NODES); } while ((to === here || D[here][to] < 120 || D[here][to] >= 1e9) && ++tries < 50);
+    const pts = [nodePt(CENTER_LINE, here)], lane = [streetLane(e)]; let n = here, g = 0;
+    while (n !== to && g++ < 90) { const m = NX[n][to]; if (m < 0) break; const info = EDGE_INFO.get(n + ":" + m);
+      if (info?.type === "ride") { const a = STATIONS.find((q) => q.id === n), b = STATIONS.find((q) => q.id === m); pts.push({ x: NODES[m].x, z: NODES[m].z, ride: info.ti, from: a.si, to: b.si }); lane.push(0); }
+      else { for (const q of info?.type === "walk" ? (info.fwd ? info.pts : [...info.pts].reverse()) : []) { pts.push(q); lane.push(1); } pts.push(m >= NN ? { x: NODES[m].x, z: NODES[m].z } : nodePt(CENTER_LINE, m)); lane.push(m >= NN ? 0 : streetLane(e)); }
+      n = m; }
+    e.path = keepRight(pts, lane).map((q, i) => (pts[i].ride !== undefined ? pts[i] : q)); e.pi = 0; };
   const BRAINS = {
     idle() {},
     citizen(e, dt) {
