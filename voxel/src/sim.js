@@ -1,7 +1,7 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { TRANSPORTS, isStairSeg, carState, carPos, SHRINE, groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
+import { upStair, TRANSPORTS, isStairSeg, carState, carPos, SHRINE, groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 // ---- navigation graph from the world's street network: pedestrians use streets + alleys, vehicles streets only
@@ -266,10 +266,23 @@ export function createSim(W) {
   function fieldPt(e) {
     if (e.band === "paddy") { const f = pick(FARMS); return { x: f.x, z: f.z }; }
     if (e.home2) { const a = rnd(0, 6.28), r = rnd(e.r0 ?? 20, e.r1 ?? 70); return { x: e.home2.x + Math.cos(a) * r, z: e.home2.z + Math.sin(a) * r }; }
-    if (e.band === "fields") { const f = pick(FIELDS); return { x: rnd(f.x, f.x + f.w), z: rnd(f.z, f.z + f.d) }; }
+    if (e.band === "fields") { const f = pick(FIELDS.filter((q) => q !== FIELDS[4])); return { x: rnd(f.x, f.x + f.w), z: rnd(f.z, f.z + f.d) }; }
     let x, z, n = 0; do { x = rnd(20, WX - 20); z = rnd(CLIFF_Z + 60, WZ - 20); } while (occupied(x, z, 4) && ++n < 30); return { x, z }; }
   for (let i = 0; i < 49; i++) { const p = lookFor(pick(["farmer", "farmer", "farmer", "porter", "kid", "lady", "plain"])), band = i % 3 === 0 ? "fields" : i % 3 === 1 ? "meadow" : "hamlet";
-    field({ kind: "person", look: p, brain: "field", band, home2: band === "hamlet" ? pick(HAMLETS) : null, r0: 10, r1: 60, name: pick(FAMS) + " " + pick(GIVEN), title: band === "hamlet" ? "Villager" : TITLES[p.arch], activity: band === "fields" ? "tending the crops" : band === "hamlet" ? "doing chores in the village" : "wandering the countryside", pauseChance: 0.5, cr: 2.4, scale: p.kid ? 0.72 : 1 }); }
+    field({ kind: "person", look: p, brain: "field", band, home2: band === "hamlet" ? pick(HAMLETS.filter((h) => h !== HAMLETS[1])) : null, r0: 10, r1: 60, name: pick(FAMS) + " " + pick(GIVEN), title: band === "hamlet" ? "Villager" : TITLES[p.arch], activity: band === "fields" ? "tending the crops" : band === "hamlet" ? "doing chores in the village" : "wandering the countryside", pauseChance: 0.5, cr: 2.4, scale: p.kid ? 0.72 : 1 }); }
+  // the NE upland village: its people tend the wheat field and go down the zig-zag stair to the city's top terrace and back
+  const NE_H = HAMLETS[1], NE_F = FIELDS[4], ST = upStair(), stairUp = ST.pts.map((p) => ({ x: p.x, z: p.z, rail: true })), stairDown = [...stairUp].reverse();
+  const nePt = () => (chance(0.5) ? { x: NE_H.x + rnd(-55, 55), z: NE_H.z + rnd(-45, 45) } : { x: rnd(NE_F.x + 4, NE_F.x + NE_F.w - 4), z: rnd(NE_F.z + 4, NE_F.z + NE_F.d - 4) });
+  const cityPt = () => ({ x: SX[COLS] + rnd(-6, 6), z: rnd(SZ[0] + 10, SZ[3] - 10) });   // the east ring street on the top terrace
+  for (let i = 0; i < 12; i++) { const p = lookFor(pick(["farmer", "farmer", "porter", "lady", "kid", "plain"])), down = i < 3;
+    const e = newEnt({ kind: "person", look: p, brain: "upland", up: !down, name: pick(FAMS) + " " + pick(GIVEN), title: "Hill villager", activity: down ? "running errands in the city" : "working the upland wheat", cr: 2.4, speed: rnd(8, 12), scale: p.kid ? 0.72 : 1 });
+    const q = down ? cityPt() : nePt(); at(e, q.x, q.z); e.pause = rnd(0, 20); }
+  const planUpland = (e) => {
+    const goUp = !e.up ? true : chance(0.3) ? false : true;   // from the city always back up; from the village now and then down to the city
+    if (goUp && e.up) { e.path = [nePt()]; e.activity = chance(0.5) ? "tending the upland wheat" : "doing chores in the hill village"; }
+    else if (goUp) { e.path = [...stairUp, nePt()]; e.up = true; e.activity = "climbing the stair home"; }
+    else { e.path = [...stairDown, cityPt()]; e.up = false; e.activity = "heading down the stair to the city"; }
+    e.pi = 0; };
   for (const H of HAMLETS) { for (let i = 0; i < 4; i++) field({ kind: "cow", look: { animal: "cow", variant: pick(["spotted", "#8a5a32", "#c8a070"]) }, brain: "field", home2: { x: H.x + rnd(-40, 40), z: H.z + rnd(70, 110) }, r0: 0, r1: 28, speed: rnd(2, 4), cr: 3, hop: 0.4, pauseChance: 0.8, name: pick(PETNAMES), title: "Cow", activity: "grazing" });
     for (let i = 0; i < 6; i++) field({ kind: "sheep", look: { animal: "sheep", variant: 0 }, brain: "field", home2: { x: H.x + rnd(-60, 60), z: H.z - rnd(70, 100) }, r0: 0, r1: 24, speed: rnd(3, 5), cr: 2.2, hop: 0.6, pauseChance: 0.75, name: pick(PETNAMES), title: "Sheep", activity: "grazing" });
     for (let i = 0; i < 6; i++) field({ kind: "chicken", look: { animal: "chicken", variant: rndi(0, 3) }, brain: "field", home2: H, r0: 8, r1: 40, speed: rnd(4, 7), cr: 0.8, hop: 0.8, pauseChance: 0.6, name: "Chicken", title: "", activity: "scratching for grain" });
@@ -401,6 +414,8 @@ export function createSim(W) {
       if (!e.path || e.pi >= e.path.length) { let x, z, tries = 0; do { x = e.x + rnd(-30, 30); z = e.z + rnd(-30, 30); } while ((x < CITY.x0 + 4 || x > CITY.x1 - 4 || z < CITY.z0 + 4 || z > CITY.z1 - 4 || onStatue(x, z, 4)) && ++tries < 10); e.path = [{ x, z }]; e.pi = 0; }
       if (walkPath(e, dt)) e.pause = rnd(3, 14); },
     field(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { e.path = [fieldPt(e)]; e.pi = 0; } if (walkPath(e, dt) && chance(e.pauseChance ?? 0.4)) e.pause = rnd(1, 5); },
+    upland(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) planUpland(e);
+      if (walkPath(e, dt)) { e.pause = rnd(3, 14); e.path = null; if (!e.up) e.activity = "shopping on the top terrace"; } },
     yard(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (!e.path || e.pi >= e.path.length) { const y = e.yard; e.path = [{ x: rnd(y.x, y.x + y.w), z: rnd(y.z, y.z + y.d) }]; e.pi = 0; } if (walkPath(e, dt) && chance(0.5)) e.pause = rnd(1, 6); },
     pace(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.pt === undefined) e.pt = rnd(e.a0, e.a1); if (e.ax === "z" ? stepToward(e, e.fixed, e.pt, e.speed, dt) : stepToward(e, e.pt, e.fixed, e.speed, dt)) { e.pt = rnd(e.a0, e.a1); e.pause = rnd(1, 6); } },
     bank(e, dt) { if (e.pause > 0) { e.pause -= dt; return; } if (e.bt === undefined) e.bt = Math.max(LOW0, Math.min(LOW1, e.z + rnd(-150, 150))); const dz = e.bt - e.z; if (Math.abs(dz) < 1) { e.bt = undefined; e.pause = rnd(1, 6); return; }
@@ -435,6 +450,11 @@ export function createSim(W) {
     T += dt; T_now = T;
     for (const e of ents) { e.ox = e.x; e.oz = e.z; e.mv = false; BRAINS[e.brain](e, dt); }
     collide();
+    // walkers on a railed path (the zig-zag stair) stay within its edges whatever the crowd does
+    for (const e of ents) { const P = e.path; if (!P || e.pi < 1 || e.pi >= P.length || !P[e.pi].rail || !P[e.pi - 1].rail) continue;
+      const a = P[e.pi - 1], b = P[e.pi], dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
+      const t = Math.max(0, Math.min(L, (e.x - a.x) * ux + (e.z - a.z) * uz)), lat = Math.max(-2.2, Math.min(2.2, (e.x - a.x) * -uz + (e.z - a.z) * ux));
+      e.x = a.x + ux * t - uz * lat; e.z = a.z + uz * t + ux * lat; }
     // congestion sampling (every step) → smoothed per-edge / per-junction slowed-walker counts once a second
     for (const e of ents) { if (e.hidden || !e.path || e.kind !== "person" || e.brain !== "citizen") continue;
       if (!(e.waiting || (e.spd ?? e.speed) < e.speed * 0.35)) continue; const el = streetElement(e.x, e.z); if (!el) continue;

@@ -63,6 +63,12 @@ lowland; `water.js` meshes it (flat stretches with scrolling glints, fall sheets
 - **Airships:** two cargo ships fly a tour of the five `MASTS` (climb, cruise, descend, hover at the platform); three small
   balloons drift in slow loops.
 
+**Zig-zag stair** (`upStair()` in `world.js`): six switchback legs of stone steps (rise ≤ 1 per 2 units) from the top
+terrace's east edge up the flank to the hill village and its wheat field, laid where the slope is about the right height
+and built up in coursed masonry elsewhere, lanterns on the landings. A dozen hill villagers (`brain: "upland"`) live up
+there and commute down it; walkers on it are kept between its edges (`rail` waypoints). A village sharing a shelf with
+its field is levelled to the field's height.
+
 ## Lighting
 Warm key sun with soft shadows, a cool blue fill light from the opposite side and a dim hemisphere ambient (shadow
 sides read cool, lit sides warm), ACES tone mapping. Ambient occlusion at two scales: per-vertex voxel AO baked into

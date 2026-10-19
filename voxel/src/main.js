@@ -116,6 +116,7 @@ const VIEWS = {
   river: () => [[W.RX + 120, 80, W.SZ[6] + 140], [W.RX, 0, W.SZ[5]]],
   gondola: () => [[W.GX + 110, 60, W.GONDOLA_LOW.z + 90], [W.GX, 30, W.GONDOLA_LOW.z - 40]],
   lift: () => { const T = W.LIFTS[0]; return [[T.x + 90, 50, T.z + 110], [T.x, 40, T.z - 10]]; },
+  upland: () => [[1300, 70, 640], [1500, -40, 360]],   // the zig-zag stair up to the hill village (target y is ground-relative)
   gondola2: () => [[W.GX2 - 140, 110, W.G2.mid.z + 160], [W.GX2, 60, W.G2.mid.z - 40]],
   shrine: () => [[W.SHRINE.x + 120, 60, W.SHRINE.z + 130], [W.SHRINE.x + 20, 10, W.SHRINE.z + 20]],
   falls: () => [[W.RX + 200, 180, W.CITY.z0 + 230], [W.RX, 130, W.CLIFF_Z - 20]],

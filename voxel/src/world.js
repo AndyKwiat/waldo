@@ -161,6 +161,10 @@ function pads() {
   if (PADS) return PADS;
   PADS = [...FIELDS.map((f) => ({ x0: f.x - 6, z0: f.z - 6, x1: f.x + f.w + 6, z1: f.z + f.d + 6 })), ...HAMLETS.map((h) => ({ x0: h.x - 80, z0: h.z - 70, x1: h.x + 80, z1: h.z + 70 }))]
     .map((p) => ({ ...p, h: Math.round(outerBase((p.x0 + p.x1) / 2, (p.z0 + p.z1) / 2)) }));
+  // a village next to a field shares its shelf (one level to walk between them)
+  const nf = FIELDS.length; for (let i = nf; i < PADS.length; i++) { const p = PADS[i], cx = (p.x0 + p.x1) / 2, cz = (p.z0 + p.z1) / 2;
+    let best = null, bd = 220; for (let j = 0; j < nf; j++) { const q = PADS[j], d = Math.hypot((q.x0 + q.x1) / 2 - cx, (q.z0 + q.z1) / 2 - cz); if (d < bd) { bd = d; best = q; } }
+    if (best) p.h = best.h; }
   return PADS;
 }
 function bumpsAt(x, z) { let h = 0; for (const b of BUMPS) { const d2 = ((x - b.x) ** 2 + (z - b.z) ** 2) / (b.r * b.r); if (d2 < 4) h += b.h * Math.exp(-d2 * 1.6); } return h; }
@@ -216,8 +220,42 @@ function outerBase(x, z) {
   const base = z < CITY.z0 ? LV[0] : z <= CITY.z1 + 12 ? levelAt(z) : LV[ROWS] * Math.max(0, 1 - (z - CITY.z1 - 12) / 28);
   return base + flankRise(x, z);
 }
-/** Terrain surface (what the ground mesh shows): mountain plateau, shelf, city terraces, flanks, lowland, river channel. */
+// ---- the zig-zag stone stair from the city's top terrace (east edge) up the flank to the NE upland village + wheat field.
+// Legs run along z across the slope; each leg sits where the natural ground is about its own height, so the stair hugs
+// the mountain (cut into it here, built up in masonry there). Lazily computed from the raw terrain.
+let STAIR = null;
+export function upStair() {
+  if (STAIR) return STAIR;
+  const f = FIELDS[4], top = { x: f.x - 3, z: f.z + 45 }, topY = Math.round(terrainH0(f.x + f.w / 2, f.z + f.d / 2));
+  const foot = { x: CITY.x1 + 4, z: f.z + 120, y: LV[0] }, n = 6, zA = f.z + 20, zB = f.z + 92, pts = [{ ...foot }];
+  let z = foot.z > (zA + zB) / 2 ? zB : zA;
+  for (let k = 0; k < n; k++) {
+    const y0 = LV[0] + ((topY - LV[0]) * k) / n, y1 = LV[0] + ((topY - LV[0]) * (k + 1)) / n, want = (y0 + y1) / 2;
+    let best = CITY.x1 + 8, bd = 1e9; for (let x = CITY.x1 + 6; x < f.x - 10; x += 2) { const d = Math.abs(terrainH0(x, (zA + zB) / 2) - want); if (d < bd) { bd = d; best = x; } }
+    const x = Math.min(f.x - 8 - (n - 1 - k) * 9, Math.max(pts[pts.length - 1].x + (k ? 9 : 22), best));   // legs ≥ 9 apart, all before the field
+    pts.push({ x, z, y: y0 }); z = z === zA ? zB : zA; pts.push({ x, z, y: y1 });
+  }
+  pts.push({ x: top.x, z: pts[pts.length - 1].z, y: topY }, { x: top.x + 4, z: top.z, y: topY });
+  return (STAIR = { pts, foot, top: pts[pts.length - 1] });
+}
+/** Height of the stair surface at (x, z) if it is on the stair (risers every 2 units), else null. */
+function stairH(x, z) {
+  const P = upStair().pts;
+  let best = null, bd = 3.6;
+  for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], dx = b.x - a.x, dz = b.z - a.z, L = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L)), d = Math.hypot(a.x + dx * t - x, a.z + dz * t - z);
+    if (d < bd) { bd = d; const len = Math.sqrt(L), s = Math.floor((t * len) / 2) * 2 / Math.max(1, len); best = Math.round(a.y + (b.y - a.y) * Math.min(1, s)); } }
+  return best;
+}
+export const onStair = (x, z, m = 0) => { const P = upStair().pts; for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], dx = b.x - a.x, dz = b.z - a.z, L = dx * dx + dz * dz || 1;
+  const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / L)); if (Math.hypot(a.x + dx * t - x, a.z + dz * t - z) < 3.6 + m) return true; } return false; };
+/** Terrain surface (what the ground mesh shows): the zig-zag stair where it runs, else the natural terrain. */
 export function terrainH(x, z) {
+  if (STAIR && x > CITY.x1 && x < FIELDS[4].x + 10 && z > FIELDS[4].z && z < FIELDS[4].z + 140) { const h = stairH(x, z); if (h !== null) return h; }
+  return terrainH0(x, z);
+}
+/** Natural terrain: mountain plateau, shelf, city terraces, flanks, lowland, river channel. */
+function terrainH0(x, z) {
   let h;
   if (z < CLIFF_Z) {
     // the great cliff: four tiers whose faces wander in and out, ragged columns, narrow ledges, the plateau above
@@ -238,8 +276,9 @@ export function terrainH(x, z) {
   else {
     h = outerBase(x, z);
     if (dx > 30 || z > CITY.z1 + 40) {
-      for (const p of pads()) { const ox = Math.max(p.x0 - x, x - p.x1, 0), oz = Math.max(p.z0 - z, z - p.z1, 0), o = Math.hypot(ox, oz); if (o < 50) { const w = sstep(o / 50); h = p.h * (1 - w) + h * w; break; } }
-      const b = bumpsAt(x, z); if (b >= 0.6 && !occupied(x, z, 1)) h += b;
+      let bp = null, bo = 50; for (const p of pads()) { const ox = Math.max(p.x0 - x, x - p.x1, 0), oz = Math.max(p.z0 - z, z - p.z1, 0), o = Math.hypot(ox, oz); if (o < bo) { bo = o; bp = p; } }
+      if (bp) { const w = sstep(bo / 50); h = bp.h * (1 - w) + h * w; }   // the nearest flat pad wins
+      const b = bumpsAt(x, z); if (b >= 0.6 && !occupied(x, z, 1) && !bp) h += b;
     }
   }
   // river channel (and the pool on the shelf below the falls)
@@ -512,6 +551,8 @@ export function layout() {
   if (has("incense_burner")) put("incense_burner", SHRINE.x, SHRINE.z + 34, 0);
   for (let k = 0; k < 16; k++) { const a = k / 16 * 6.28, d = rnd(58, 80); tree(SHRINE.x + Math.cos(a) * d, SHRINE.z + Math.sin(a) * d * 0.8, ["tree_pine", "tree_pine", "tree_blossom", "bamboo"]); }
   if (has("mooring_mast")) for (const m of MASTS) { put("mooring_mast", m.x, m.z, 0); ob(m.x, m.z, 4); }
+  // lantern posts on the stair's landings
+  { const P = upStair().pts; for (let i = 2; i < P.length - 2; i += 2) put("lantern_post", P[i].x + 5, P[i].z, 0, { y: terrainH(P[i].x, P[i].z) }); }
   // ---- city walls (24 tall): 22-long segments, towers at corners and along the sides, gate in the south wall
   // walls follow the terraces: each segment sits at the lower of its two ends (the uphill end is buried, never floating)
   const lowAt = (pts) => Math.min(...pts.map(([x, z]) => terrainH(x, z)));
@@ -783,7 +824,9 @@ function terrainField(x0, x1, z0, z1, s, H, o) {
   g.computeBoundingSphere(); return g;
 }
 /** Top colour on the mountain's flanks and the cliff ledges: grey rock with grassy / mossy patches. */
+const nearStair = (x, z) => STAIR && x > CITY.x1 - 2 && x < FIELDS[4].x + 10 && z > FIELDS[4].z - 4 && z < FIELDS[4].z + 144 && onStair(x, z, 1.5);
 function rockTop(h, x, z, C) {
+  if (nearStair(x, z)) return C.set(Math.floor(h / 2) % 2 ? "#c8bea8" : "#b6ac96");   // stone treads
   const rise = z < CLIFF_Z ? h - LV[0] : flankRise(x, z), n = vnoise(x / 15, z / 15), k = hash(Math.floor(x / 2), Math.floor(z / 2));
   if (h >= PLATEAU - 2 && z < CLIFF_Z - 40) return mountainColor(h, x, z, C);
   if (rise < 8 || n > 0.66) return C.set(k > 0.5 ? "#62b446" : "#58a840");                       // grassy shelves
@@ -801,6 +844,8 @@ const dressed = (x, z) => inCityWalls(x, z) && (inRiver(x, z, 4) || Math.hypot(x
 /** Side faces: dressed stone for the river channel / pool / stair risers, banded rock (with moss and dark seams) for every
  *  real drop — the terrace cliffs, the great cliff and the mountain flanks. */
 function sideColorAt(h, hn, x, z, C) {
+  if (nearStair(x, z)) { const row = Math.floor(h / 3), blk = Math.floor((x + z + (row % 2) * 3) / 6), k = hash(blk, row);   // coursed grey masonry under the stair
+    return C.set(h % 3 === 0 ? "#6e6c68" : k > 0.66 ? "#a6a49c" : k > 0.33 ? "#94928a" : "#b2aea4"); }
   if (dressed(x, z) && h - hn < 16) return C.set("#c8bea8");   // the channel's low banks (its big drops are rock: the falls)
   if (h - hn >= 3 || (!inCityWalls(x, z) && (h - hn >= 2 || flankRise(x, z) > 8 || z < CLIFF_Z))) {
     // strata: colour bands mostly by height (slightly wavy), so faces read as layered rock rather than flat walls
@@ -816,7 +861,8 @@ function sideColorAt(h, hn, x, z, C) {
 }
 /** The ground: {main} = the world rect (textured tops, brick retaining walls) and {outer} = mountains + slopes beyond it. */
 export function terrainGeometry() {
-  const main = terrainField(0, WX, CLIFF_Z, WZ, 2, terrainH, { textured: (x, z) => z >= CLIFF_Z && flankRise(x, z) < 8, topColor: rockTop, sideColor: sideColorAt, brick: (x, z, d) => d >= 2 && d < 16 && dressed(x, z) });
+  upStair();
+  const main = terrainField(0, WX, CLIFF_Z, WZ, 2, terrainH, { textured: (x, z) => z >= CLIFF_Z && flankRise(x, z) < 8 && !nearStair(x, z), topColor: rockTop, sideColor: sideColorAt, brick: (x, z, d) => d >= 2 && d < 16 && dressed(x, z) });
   const parts = [
     terrainField(-900, WX + 900, -420, CLIFF_Z, 4, terrainH, { topColor: rockTop, sideColor: sideColorAt }),
     terrainField(-900, 0, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => (flankRise(x, z) < 8 ? C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446") : rockTop(h, x, z, C)), sideColor: sideColorAt }),
