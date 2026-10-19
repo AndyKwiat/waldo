@@ -14,6 +14,7 @@ import { createSim } from "./sim.js";
 import { WHEELS, wheelModel } from "../models/recipes/props.js";
 import { columnTops, heightMap, bakeSkyAO, sampler } from "./skyao.js";
 import { buildWater } from "./water.js";
+import { buildTransport } from "./transport.js";
 import { glowGeometry, lightSources, lightMapCanvas, nightSky, celestial } from "./night.js";
 
 const qs = new URLSearchParams(location.search);
@@ -113,6 +114,9 @@ const VIEWS = {
   yard: () => [[W.GATE_X + 70, 60, W.YARD.z + W.YARD.d + 70], [W.GATE_X, 8, W.YARD.z + 10]],
   alley: () => { const e = W.EDGE_LIST.find((q) => q.type === "alley" && q.a[0] > 0) ?? W.EDGE_LIST[0], x = (W.SX[e.a[0]] + W.SX[e.b[0]]) / 2, z = W.alleyZ(e.a[1], e.a[0], x); return [[x - 26, 75, z + 34], [x + 6, 0, z]]; },
   river: () => [[W.RX + 120, 80, W.SZ[6] + 140], [W.RX, 0, W.SZ[5]]],
+  gondola: () => [[W.GX + 110, 60, W.GONDOLA_LOW.z + 90], [W.GX, 30, W.GONDOLA_LOW.z - 40]],
+  lift: () => [[W.LIFT.x + 70, 30, W.LIFT.z + 70], [W.LIFT.x, 18, W.LIFT.z - 4]],
+  shrine: () => [[W.SHRINE.x + 120, 60, W.SHRINE.z + 130], [W.SHRINE.x + 20, 10, W.SHRINE.z + 20]],
   falls: () => [[W.RX + 150, 70, W.CITY.z0 + 60], [W.RX, 40, W.CLIFF_Z]],
   mill: () => [[L.WHEEL.x - 50, 40, L.WHEEL.z + 70], [L.WHEEL.x + 10, 4, L.WHEEL.z]],
   paddies: () => [[W.GATE_X - 160, 70, W.WALL_S + 150], [W.GATE_X - 160, 0, W.WALL_S + 55]],
@@ -184,7 +188,7 @@ const geoCache = new Map();
 // Models with walking parts: the ox pulling the ox cart (legs at x 20/26, z 11/16, y 0–4 in the 32-grid; faces +x → k ±3).
 const MODEL_PARTS = { oxcart: (x, y, z) => { if (y > 4 || !((x === 20 || x === 26) && (z === 11 || z === 16))) return null; return [(x === 20) === (z === 11) ? 3 : -3, 5, x + 0.5 - 16]; } };
 async function modelGeometry(model, remap, key) {
-  if (!geoCache.has(key)) geoCache.set(key, loadModel(model).then((g) => meshVoxels(g, { remap: remap ?? {}, pivot: model === "waterwheel" ? "center" : "base", parts: MODEL_PARTS[model] })));
+  if (!geoCache.has(key)) geoCache.set(key, loadModel(model).then((g) => meshVoxels(g, { remap: remap ?? {}, pivot: model === "waterwheel" || model === "pulley_wheel" ? "center" : "base", parts: MODEL_PARTS[model] })));
   return geoCache.get(key);
 }
 const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
@@ -360,7 +364,7 @@ function applyNight(n) {
   sky?.set(n); sunMoon?.set(n);
 }
 
-let wheel = null;
+let wheel = null, transport = null;
 async function buildWheel() { // the mill wheel stands in the south-flowing river: its plane is y–z, turning about x
   const holder = new THREE.Group(); holder.position.set(L.WHEEL.x + 2, 10, L.WHEEL.z); holder.rotation.y = Math.PI / 2; scene.add(holder);
   wheel = new THREE.Mesh(await modelGeometry("waterwheel", null, "waterwheel"), vmat); wheel.castShadow = true; holder.add(wheel); }
@@ -395,7 +399,7 @@ function updateActors(dt) {
   for (const b of sim.boats) place(b, b.x, W.RIVER.y(b.z) - 0.85 + Math.sin(sim.time * 1.5 + b.phase) * 0.25, b.z, b.yaw, 1);
   for (const d of sim.ducks) place(d, d.x, W.RIVER.y(d.z) - 0.45 + Math.sin(sim.time * 2 + d.phase) * 0.15, d.z, d.yaw, d.k ? 0.7 : 1);
   for (const im of actorMeshes.values()) { im.instanceMatrix.needsUpdate = true; if (im.userData.walk) im.userData.walk.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
-  updateVehicleWheels(); water.update(sim.time);
+  updateVehicleWheels(); water.update(sim.time); transport?.update(sim.time);
   if (night !== nightTarget) { night += (nightTarget - night) * Math.min(1, dt * 1.6); if (Math.abs(nightTarget - night) < 0.004) night = nightTarget; applyNight(night); }
   if (sky) sky.group.position.copy(camera.position);
   if (sunMoon) sunMoon.group.position.copy(camera.position);
@@ -452,7 +456,7 @@ city.stats = () => ({ ...sim.stats(), simTime: sim.time, drawCalls: renderer.inf
   try {
     setStatus("BUILDING THE CITY...");
     tufts(); crops(); bushes();
-    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); await bakeSkyOcclusion(); await buildNight(); addDistanceDarkening(scene); applyNight(night);
+    await Promise.all([buildStatics(), buildActors(), buildWheel()]); buildVehicleWheels(); transport = await buildTransport(scene, W, { modelGeometry, vmat, walkMat, meshVoxels, gridFromVoxels, animalVoxels, animalParts }); await bakeSkyOcclusion(); await buildNight(); addDistanceDarkening(scene); applyNight(night);
     setView(qs.get("view") ?? "town");
     if (qs.get("t")) city.advance(+qs.get("t"));
     document.getElementById("loading")?.remove();

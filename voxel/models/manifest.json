@@ -765,7 +765,7 @@
  },
  "gondola_station_high": {
   "size": 48,
-  "voxels": 3059,
+  "voxels": 2827,
   "bbox": {
    "min": {
     "x": 0,
@@ -774,7 +774,7 @@
    },
    "max": {
     "x": 43,
-    "y": 37,
+    "y": 30,
     "z": 37
    }
   }
@@ -797,7 +797,7 @@
  },
  "elevator_tower": {
   "size": 48,
-  "voxels": 2975,
+  "voxels": 2963,
   "bbox": {
    "min": {
     "x": 9,

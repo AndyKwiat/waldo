@@ -238,7 +238,7 @@ export function gondolaStationHigh() {
   for (const [x, z] of [[4, 17], [4, 30], [12, 17], [12, 30], [20, 17], [20, 30]]) g.box(x, 6, z, x, 13, z, (xx, y) => (y === 13 ? C.d : C.base));
   for (let x = 4; x <= 20; x++) for (const z of [17, 30]) g.set(x, 13, z, x % 3 === 0 ? M.gold : M.beam);
   for (let z = 17; z <= 30; z++) for (const x of [4, 20]) g.set(x, 13, z, z % 3 === 0 ? M.gold : M.beam);
-  hipRoof(g, 1, 23, 14, 33, 14, { pearl: true });
+  hipRoof(g, 1, 21, 14, 33, 14, { pearl: true });
   lantern(g, 4, 12, 31); lantern(g, 20, 12, 31); lantern(g, 4, 12, 16); lantern(g, 20, 12, 16);
   g.box(6, 6, 18, 10, 7, 18, M.woodD); g.box(14, 6, 18, 18, 7, 18, M.woodD);
   crate(g, 6, 6, 27, 2); crate(g, 9, 6, 28, 1);
@@ -254,11 +254,8 @@ export function gondolaStationHigh() {
   for (const x of [26, 27, 42, 43]) g.box(x, 0, 18, x, 1, 29, (xx, y) => (y === 1 ? M.woodL : M.woodD)); // ground sills across
   for (const zs of [[17, 16], [30, 31]]) g.line(29, 1, zs[1], 34, 14, zs[0], M.wood); // outrigger props
   // incoming cable from −x at y 29..30 (centre y 30), resting on the wheel top at mesh x 34.5
-  for (let x = 0; x <= 33; x++) for (const y of [29, 30]) for (const z of [23, 24]) g.set(x, y, z, (x + y) % 3 === 0 ? ROPED : ROPE);
-  g.box(25, 0, 22, 25, 22, 22, M.woodD); g.box(25, 0, 25, 25, 22, 25, M.woodD); // cable guide posts
-  g.box(25, 23, 22, 25, 23, 25, M.woodL); g.box(25, 28, 22, 25, 28, 25, IRON); g.box(25, 31, 22, 25, 31, 25, IRON);
-  g.box(25, 24, 22, 25, 31, 22, M.woodD); g.box(25, 24, 25, 25, 31, 25, M.woodD);
-  g.box(25, 32, 23, 25, 37, 23, M.woodD); flagTo(g, 26, 37, 23, 5, 3, CLOTH, M.gold);
+  for (let x = 0; x <= 29; x++) for (const y of [29, 30]) for (const z of [23, 24]) g.set(x, y, z, (x + y) % 3 === 0 ? ROPED : ROPE);
+  g.box(24, 6, 31, 24, 24, 31, M.woodD); g.set(24, 25, 31, M.gold); flagTo(g, 25, 24, 31, 5, 3, CLOTH, M.gold); // flag pole
   void WX; void WY;
   return g;
 }
@@ -331,7 +328,6 @@ export function elevatorTower() {
   for (const z of [20, 27]) { g.box(45, 0, z, 46, TOP, z, (x, y) => (y % 10 === 0 ? IRON : x === 45 ? M.woodD : M.wood)); g.box(44, 0, z, 47, 0, z, M.stone); }
   for (const y of [11, 22, 33]) { for (const z of [20, 27]) g.box(31, y, z, 44, y, z, M.woodL); }
   for (const z of [20, 27]) { g.line(31, 1, z, 44, 10, z, M.wood); g.line(31, 12, z, 44, 21, z, M.wood); }
-  g.box(45, TOP, 21, 46, TOP, 26, M.woodD);
   // small roof on the −x side of the head frame
   for (const [x, z] of [[13, 15], [13, 32]]) g.box(x, 30, z, x, TOP + 1, z, (xx, y) => (y === TOP + 1 ? C.d : C.base));
   deck(g, 12, 16, 15, 32, 29, "z"); rail(g, "z", 15, 32, 30, 12, 2, 3);

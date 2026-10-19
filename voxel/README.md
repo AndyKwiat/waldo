@@ -15,7 +15,7 @@ bun run statue              # rebuild the giant statue (a Voxer recipe file, bui
 
 **Controls:** left-drag orbit · right-drag pan · scroll zoom · WASD move · click someone to follow them
 (orbiting keeps following; right-drag, WASD or Esc stops).
-**Views:** small buttons in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
+**Views:** small buttons (incl. `gondola`, `lift`, `shrine`, `falls`, `mill`) in the bottom-left jump the camera to each named view (also `?view=` / `city.view(name)`).
 **URL params:** `?view=town|overview|city|district|alley|plaza|statue|street|gate|walls|palace|yard|river|paddies|pagoda|country` · `&t=<sim seconds to
 fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao` (no screen-space AO; also the **O** key / AO button) · `&nosky` (no baked sky occlusion) · `&nodark` (no distance darkening; **F** key / DEPTH FOG button) · `&night` (start at night; **N** key / NIGHT button).
 
@@ -35,6 +35,25 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao
 | `models/recipes/statue.recipe.js` | the giant marble Jupiter in the market square — a **Voxer recipe file** (`build(ctx)`, slots, anchors), not part of the `index.js` registry; `bun run statue` builds it with Voxer's `bun run recipe` into `models/statue.json` + `models/sheets/statue.png` (and merges its `manifest.json` entry) |
 | `models/*.json` | built models in Voxer's scene format; `models/sheets/*.png` Voxer's multi-view snapshots |
 | `scripts/` | `serve.ts` static server · `shot.ts` headless screenshots · `build-models.ts` + `voxer.ts` Voxer driver |
+
+## The mountain
+The city climbs a mountainside (`world.js`): every east–west street line r sits at terrace level `LV[r]` (gate 10 → palace
+118); inside a block the drop happens at the block's middle as a dressed-stone retaining wall (houses keep to their half),
+and north–south streets climb it as stairs. `terrainH(x, z)` is the surface (also the plateau at `PLATEAU` = 196 above a
+tiered cliff at `CLIFF_Z`, the pool on the shelf below it, slopes and pads outside the walls, the lowland); `groundH` adds
+bridge decks. The river (`RIVER.x/halfW/y(z)`) falls off the plateau in the great waterfall, runs down the city in a stone
+channel along column `RIVER_C` with a fall at every terrace, under `water_gate`s in the walls, and out across the
+lowland; `water.js` meshes it (flat stretches with scrolling glints, fall sheets with streaks, foam/mist point clouds).
+`terrainGeometry()` meshes the ground as greedy voxel columns (painted texture on tops, brick on retaining walls).
+**Transport** (`TRANSPORTS` in `world.js`, drawn by `transport.js`, ridden in `sim.js`):
+- **Gondola:** the riverside station on the plaza terrace up over a timber pylon, the north wall and the falls to the
+  mountain shrine on the plateau. Two cars shuttle on one rope; two oxen walk round the capstan while they move.
+- **Lift:** a counterweighted cage in a timber tower on the retaining wall between the plaza and palace terraces.
+- **Riding:** both ends are graph nodes joined by a "ride" edge, so routes take them when that's quicker (or to reach
+  the shrine). Riders wait on the platform for a docked car with room, ride along (`absY`), and step off at the far end.
+  `carState/carPos` give car positions to both the sim and the renderer.
+- **Airships:** two cargo ships fly a tour of the five `MASTS` (climb, cruise, descend, hover at the platform); three small
+  balloons drift in slow loops.
 
 ## Lighting
 Warm key sun with soft shadows, a cool blue fill light from the opposite side and a dim hemisphere ambient (shadow

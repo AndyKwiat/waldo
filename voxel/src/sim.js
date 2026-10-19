@@ -1,39 +1,50 @@
 // City simulation (ported from the 2D game): a street graph with precomputed shortest routes, places with
 // door approaches, citizens with homes + roles running errands, vehicles, soldiers, pets, pigeons, river life.
 // Pure logic on the x/z ground plane; main.js turns entities into instanced voxel meshes.
-import { groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
+import { TRANSPORTS, carState, carPos, SHRINE, groundH, CLIFF_Z, STREET, rand, rnd, rndi, pick, chance, SX, SZ, COLS, ROWS, PLAZA, CENTER, CITY, GATE_X, WALL, RIVER, PADDIES, FIELDS, HAMLETS, WX, WZ, occupied, onStatue, STATUE, EDGE_LIST, HSEG, alleyZ, YARD, PLAZA_R, AV_C } from "./world.js";
 import { genPerson, TITLES } from "./people.js";
 
 // ---- navigation graph from the world's street network: pedestrians use streets + alleys, vehicles streets only
 const NC = COLS + 1, NR = ROWS + 1, NN = NC * NR, nid = (c, r) => r * NC + c;
 export const NODES = []; for (let r = 0; r < NR; r++) for (let c = 0; c < NC; c++) NODES.push({ x: SX[c], z: SZ[r] });
-export const EDGES = EDGE_LIST.map((e) => [nid(...e.a), nid(...e.b)]);
-const EDGE_INFO = new Map(); EDGE_LIST.forEach((e, i) => { const [a, b] = EDGES[i]; EDGE_INFO.set(a + ":" + b, { ...e, fwd: true }); EDGE_INFO.set(b + ":" + a, { ...e, fwd: false }); });
+// transport stations are extra graph nodes (ids after the street grid): each end walks to its nearby junctions (via a
+// point on the street), and a "ride" edge joins the two ends — routes that take it ride the gondola / lift
+export const STATIONS = [];
+TRANSPORTS.forEach((T, ti) => { for (const end of ["A", "B"]) { NODES.push({ x: T.ends[end].x, z: T.ends[end].z }); STATIONS.push({ ti, end, id: NODES.length - 1 }); } });
+const stationId = (ti, end) => STATIONS.find((s) => s.ti === ti && s.end === end).id;
+const ALL_EDGES = [...EDGE_LIST.map((e) => ({ ...e, ia: nid(...e.a), ib: nid(...e.b) }))];
+TRANSPORTS.forEach((T, ti) => {
+  for (const end of ["A", "B"]) for (const [c, r] of T.links[end]) ALL_EDGES.push({ type: "walk", ia: stationId(ti, end), ib: nid(c, r), pts: T.via[end] ? [T.via[end]] : [] });
+  ALL_EDGES.push({ type: "ride", ia: stationId(ti, "A"), ib: stationId(ti, "B"), ti, cost: T.cost });
+});
+const NNA = NODES.length;
+export const EDGES = ALL_EDGES.map((e) => [e.ia, e.ib]);
+const EDGE_INFO = new Map(); ALL_EDGES.forEach((e, i) => { const [a, b] = EDGES[i]; EDGE_INFO.set(a + ":" + b, { ...e, fwd: true }); EDGE_INFO.set(b + ":" + a, { ...e, fwd: false }); });
 function floyd(edges) {
-  const D = [...Array(NN)].map(() => new Float64Array(NN).fill(1e9)), N = [...Array(NN)].map(() => new Int16Array(NN).fill(-1));
-  for (let i = 0; i < NN; i++) { D[i][i] = 0; N[i][i] = i; }
+  const D = [...Array(NNA)].map(() => new Float64Array(NNA).fill(1e9)), N = [...Array(NNA)].map(() => new Int16Array(NNA).fill(-1));
+  for (let i = 0; i < NNA; i++) { D[i][i] = 0; N[i][i] = i; }
   for (const [a, b, len] of edges) { D[a][b] = D[b][a] = len; N[a][b] = b; N[b][a] = a; }
-  for (let k = 0; k < NN; k++) for (let i = 0; i < NN; i++) { const dik = D[i][k]; if (dik >= 1e9) continue; for (let j = 0; j < NN; j++) if (dik + D[k][j] < D[i][j]) { D[i][j] = dik + D[k][j]; N[i][j] = N[i][k]; } }
+  for (let k = 0; k < NNA; k++) for (let i = 0; i < NNA; i++) { const dik = D[i][k]; if (dik >= 1e9) continue; for (let j = 0; j < NNA; j++) if (dik + D[k][j] < D[i][j]) { D[i][j] = dik + D[k][j]; N[i][j] = N[i][k]; } }
   return [D, N];
 }
 // alleys are narrow: they cost 1.2× their length + 30, so through-traffic stays on the wide streets and alleys carry local trips
-const elen = (a, b, e) => (e.pts ? e.pts.reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) * 1.2 + 30 : Math.hypot(NODES[a].x - NODES[b].x, NODES[a].z - NODES[b].z));
-const [DIST, NEXT] = floyd(EDGES.map(([a, b], i) => [a, b, elen(a, b, EDGE_LIST[i])]));
-const [VDIST, VNEXT] = floyd(EDGES.filter((_, i) => EDGE_LIST[i].type === "street").map(([a, b]) => [a, b, elen(a, b, {})]));
-const PED_NODES = [...new Set(EDGES.flat())];
+const elen = (a, b, e) => (e.type === "ride" ? e.cost : e.type === "walk" ? [NODES[a], ...e.pts, NODES[b]].reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) : e.pts ? e.pts.reduce((s, p, i, arr) => s + (i ? Math.hypot(p.x - arr[i - 1].x, p.z - arr[i - 1].z) : 0), 0) * 1.2 + 30 : Math.hypot(NODES[a].x - NODES[b].x, NODES[a].z - NODES[b].z));
+const [DIST, NEXT] = floyd(EDGES.map(([a, b], i) => [a, b, elen(a, b, ALL_EDGES[i])]));
+const [VDIST, VNEXT] = floyd(EDGES.filter((_, i) => ALL_EDGES[i].type === "street").map(([a, b]) => [a, b, elen(a, b, {})]));
+const PED_NODES = [...new Set(EDGES.flat())].filter((n) => n < NN);   // street junctions only (stations are reached via routes)
 
 // ---- congestion-aware routing: every walker's route is a fresh Dijkstra over the 81-node street graph where each
 // edge costs its length + a penalty per slowed walker currently on it (and on the junctions it passes), smoothed over a
 // few seconds, plus a little per-route noise so a crowd doesn't all switch to the same detour at once.
-const ADJ = [...Array(NN)].map(() => []);   // [neighbour, length, edge index]
-EDGES.forEach(([a, b], i) => { const len = elen(a, b, EDGE_LIST[i]); ADJ[a].push([b, len, i]); ADJ[b].push([a, len, i]); });
-export const CONG = { edge: new Float32Array(EDGES.length), node: new Float32Array(NN), edgeNow: new Float32Array(EDGES.length), nodeNow: new Float32Array(NN), samples: 0 };
+const ADJ = [...Array(NNA)].map(() => []);   // [neighbour, length, edge index]
+EDGES.forEach(([a, b], i) => { const len = elen(a, b, ALL_EDGES[i]); ADJ[a].push([b, len, i]); ADJ[b].push([a, len, i]); });
+export const CONG = { edge: new Float32Array(EDGES.length), node: new Float32Array(NNA), edgeNow: new Float32Array(EDGES.length), nodeNow: new Float32Array(NNA), samples: 0 };
 const PER_SLOW = 26, NOISE = 0.15;   // route cost of one slowed walker ≈ 9 units of extra walking
 function route(from, to) {
-  const dist = new Float64Array(NN).fill(1e9), prev = new Int16Array(NN).fill(-1), done = new Uint8Array(NN);
+  const dist = new Float64Array(NNA).fill(1e9), prev = new Int16Array(NNA).fill(-1), done = new Uint8Array(NNA);
   dist[from] = 0;
   for (;;) {
-    let u = -1, best = 1e9; for (let i = 0; i < NN; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+    let u = -1, best = 1e9; for (let i = 0; i < NNA; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
     if (u < 0 || u === to) break; done[u] = 1;
     for (const [v, len, ei] of ADJ[u]) {
       const c = len * (1 + (rand() - 0.5) * NOISE) + PER_SLOW * (CONG.edge[ei] + CONG.node[v]);
@@ -56,7 +67,7 @@ function streetElement(x, z) {
 const EDGE_IDX = new Map(); EDGES.forEach(([a, b], i) => { EDGE_IDX.set(a + ":" + b, i); EDGE_IDX.set(b + ":" + a, i); });
 const GATE_NODE = nid(AV_C, ROWS);
 const VEH_NODES = PED_NODES.filter((n) => n !== GATE_NODE && VDIST[GATE_NODE][n] < 1e9);   // vehicles stay on the street network reachable from the gate
-const SEDGES = EDGES.filter(([a, b], i) => EDGE_LIST[i].type === "street" && VEH_NODES.includes(a) && VEH_NODES.includes(b));
+const SEDGES = EDGES.filter(([a, b], i) => ALL_EDGES[i].type === "street" && VEH_NODES.includes(a) && VEH_NODES.includes(b));
 
 const hyp = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const segAnchor = (x, z, n1, n2, alley = false) => ({ x, z, o: NODES[n1].z === NODES[n2].z ? "h" : "v", nodes: [n1, n2], alley });
@@ -103,14 +114,19 @@ function buildPath(e, from, to) {
     const chain = [b2]; for (let n = b2, g = 0; n !== b1 && g++ < 90;) { n = bestR.prev[n]; if (n < 0) break; chain.push(n); } chain.reverse();
     if (chain[0] !== b1) { chain.length = 0; for (let n = b1, g = 0; g++ < 90; n = NEXT[n][b2]) { chain.push(n); if (n === b2 || NEXT[n][b2] < 0) break; } }   // fallback: static shortest path
     net.push(nodePt(CENTER_LINE, chain[0])); lanes.push(SL);
-    for (let k = 1; k < chain.length; k++) { for (const q of edgePts(CENTER_LINE, chain[k - 1], chain[k])) { net.push(q); lanes.push(AL); } net.push(nodePt(CENTER_LINE, chain[k])); lanes.push(SL); } }
+    for (let k = 1; k < chain.length; k++) {
+      const info = EDGE_INFO.get(chain[k - 1] + ":" + chain[k]);
+      if (info?.type === "ride") { const st = STATIONS.find((q) => q.id === chain[k]); net.push({ x: NODES[chain[k]].x, z: NODES[chain[k]].z, ride: info.ti, to: st.end }); lanes.push(0); continue; }
+      const stn = chain[k] >= NN;
+      for (const q of edgePts(CENTER_LINE, chain[k - 1], chain[k])) { net.push(q); lanes.push(stn || chain[k - 1] >= NN ? 2 : AL); }
+      net.push(nodePt(CENTER_LINE, chain[k])); lanes.push(stn ? 0.5 : SL); } }
   net.push(A2); lanes.push(a2.alley ? AL : SL);
   for (const p of to.approach) { pts.push(p); lanes.push(doorLane(to)); }
   const out = keepRight(pts, lanes).slice(); pts.length = 0; pts.push(...out);
   if (!to.hide && to.approach.length) { const L = pts[pts.length - 1]; pts[pts.length - 1] = { x: L.x + rnd(-3, 3), z: L.z + rnd(-2, 2) }; }
   return pts;
 }
-function randomStroll() { const i = Math.floor(rand() * EDGES.length), [a, b] = EDGES[i], E = EDGE_LIST[i], t = rnd(0.15, 0.85); let x = NODES[a].x + (NODES[b].x - NODES[a].x) * t, z = NODES[a].z + (NODES[b].z - NODES[a].z) * t;
+function randomStroll() { const i = Math.floor(rand() * EDGE_LIST.length), [a, b] = EDGES[i], E = EDGE_LIST[i], t = rnd(0.15, 0.85); let x = NODES[a].x + (NODES[b].x - NODES[a].x) * t, z = NODES[a].z + (NODES[b].z - NODES[a].z) * t;
   if (E.type === "alley") z = alleyZ(E.a[1], E.a[0], x); return { kind: "stroll", x, z, anchor: segAnchor(x, z, a, b, E.type === "alley"), approach: [], hide: false }; }
 
 const FAMS = ["Wang", "Li", "Zhang", "Liu", "Chen", "Yang", "Zhao", "Huang", "Zhou", "Wu", "Xu", "Sun", "Ma", "Zhu", "Hu", "Guo", "Lin", "He", "Gao", "Luo"];
@@ -142,6 +158,8 @@ export function createSim(W) {
       [Math.abs(p.z - zN), () => segAnchor(p.x, zN, nid(cx, PLAZA_R), nid(cx + 1, PLAZA_R))], [Math.abs(p.z - zS), () => segAnchor(p.x, zS, nid(cx, PLAZA_R + 1), nid(cx + 1, PLAZA_R + 1))]].sort((a, b) => a[0] - b[0]);
     void c; STALLS.push({ kind: "stall", x: p.x, z: p.z, anchor: opts[0][1](), approach: [p], hide: false }); }
   const PAGODA = { kind: "pagoda", x: W.pagoda.x, z: W.pagoda.inZ, anchor: segAnchor(W.pagoda.x, SZ[W.pagoda.r], nid(W.pagoda.c, W.pagoda.r), nid(W.pagoda.c + 1, W.pagoda.r)), approach: [{ x: W.pagoda.x, z: W.pagoda.outZ }, { x: W.pagoda.x, z: W.pagoda.inZ }], hide: true, lane: 2.6 };
+  const gB = STATIONS.find((q) => q.ti === 0 && q.end === "B").id;
+  const SHRINEP = { kind: "shrine", x: SHRINE.x + rnd(-6, 6), z: SHRINE.z + 40, anchor: nodeAnchor(gB), approach: [{ x: SHRINE.x, z: SHRINE.z + 46 }], hide: false };
   const FORTP = { kind: "fort", x: GATE_X, z: W.fort.inZ, anchor: nodeAnchor(nid(AV_C, 3)), approach: [{ x: GATE_X, z: W.fort.outZ }, { x: GATE_X, z: W.fort.inZ }], hide: true, lane: 3.8 };   // the gatehouse passage is ~12 wide
   const FARMS = []; for (let i = 0; i < 50; i++) { const p = pick(PADDIES), fx = rnd(p.x + 4, p.x + p.w - 4), fz = p.z + 12 * rndi(0, Math.floor(p.d / 12) - 1) + rnd(2, 7), j = 0;
     FARMS.push({ kind: "farm", x: fx, z: fz, anchor: nodeAnchor(GATE_NODE), approach: [{ x: GATE_X + j, z: CITY.z1 - 4 }, { x: GATE_X + j, z: CITY.z1 + 26 }, { x: GATE_X + j, z: Math.max(CITY.z1 + 34, fz) }, { x: fx, z: fz }], hide: false, lane: 3.2 }); }
@@ -159,9 +177,9 @@ export function createSim(W) {
   const person = (arch, o = {}, tweak) => { const p = lookFor(arch, tweak); return newEnt(Object.assign({ kind: "person", look: p, name: pick(FAMS) + " " + pick(GIVEN), title: TITLES[arch] ?? "Townsperson", role: ROLE_OF[arch] ?? "resident", cr: p.item === "pole" ? 3.6 : p.kid ? 1.9 : 2.4, scale: p.kid ? 0.72 : 1 }, o)); };
   const at = (e, x, z) => { e.x = x; e.z = z; return e; };
 
-  const stayTime = (e, pl) => { switch (pl.kind) { case "home": return pl === e.home ? (e.role === "farmer" ? rnd(12, 40) : rnd(4, 16)) : rnd(3, 10); case "shop": return rnd(3, 8); case "inn": return rnd(4, 12); case "teahouse": return rnd(5, 14); case "pagoda": return e.role === "monk" ? rnd(20, 45) : rnd(10, 24); case "fort": return e.role === "official" ? rnd(25, 70) : rnd(5, 14); case "stall": return rnd(3, 9); case "farm": return rnd(50, 120); default: return rnd(0.5, 3); } };
+  const stayTime = (e, pl) => { switch (pl.kind) { case "shrine": return rnd(15, 45); case "home": return pl === e.home ? (e.role === "farmer" ? rnd(12, 40) : rnd(4, 16)) : rnd(3, 10); case "shop": return rnd(3, 8); case "inn": return rnd(4, 12); case "teahouse": return rnd(5, 14); case "pagoda": return e.role === "monk" ? rnd(20, 45) : rnd(10, 24); case "fort": return e.role === "official" ? rnd(25, 70) : rnd(5, 14); case "stall": return rnd(3, 9); case "farm": return rnd(50, 120); default: return rnd(0.5, 3); } };
   const insideText = (e, pl) => ({ home: pl === e.home ? "at home" : "visiting friends", shop: pl === e.home ? "minding the shop" : "browsing in a shop", inn: "having tea at the inn", teahouse: "sipping tea upstairs at the teahouse", pagoda: e.role === "monk" ? "meditating in the pagoda" : "praying at the pagoda", fort: e.role === "official" ? "holding court in the palace" : "on duty at the palace" })[pl.kind] ?? "";
-  const stayText = (e, pl) => (pl.kind === "stall" ? (e.kind === "dog" ? "sniffing around the market" : e.role === "porter" ? "loading goods at a stall" : "haggling at a market stall") : pl.kind === "farm" ? "working the rice paddies" : e.kind === "dog" ? "sniffing a corner" : "taking a breather");
+  const stayText = (e, pl) => (pl.kind === "shrine" ? "praying at the mountain shrine" : pl.kind === "stall" ? (e.kind === "dog" ? "sniffing around the market" : e.role === "porter" ? "loading goods at a stall" : "haggling at a market stall") : pl.kind === "farm" ? "working the rice paddies" : e.kind === "dog" ? "sniffing a corner" : "taking a breather");
   function chooseNext(e) {
     const r = rand(), here = e.place;
     switch (e.role) {
@@ -170,7 +188,7 @@ export function createSim(W) {
       case "porter": return here && here.kind === "stall" ? [pick(SHOPS), "delivering goods"] : [pick(STALLS), "fetching goods from the market"];
       case "official": if (here && here.kind === "fort") return r < 0.5 ? [pick(HOUSES), "inspecting a household"] : [pick(STALLS), "checking market prices"];
         if (r < 0.5) return [FORTP, "reporting to the palace"]; return here === e.home ? [pick(STALLS), "checking market prices"] : [e.home, "heading home"];   // not every errand ends at the one palace door
-      case "monk": if (here !== PAGODA) return [PAGODA, "returning to the pagoda"]; return r < 0.5 ? [pick(STALLS), "collecting alms at the market"] : [randomStroll(), "wandering in contemplation"];
+      case "monk": if (here !== PAGODA) return [PAGODA, "returning to the pagoda"]; if (r < 0.2) return [SHRINEP, "taking the gondola up to the mountain shrine"]; return r < 0.5 ? [pick(STALLS), "collecting alms at the market"] : [randomStroll(), "wandering in contemplation"];
       case "kid": if (here !== e.home && r < 0.3) return [e.home, "running home"]; return r < 0.78 ? [randomStroll(), "playing in the street"] : [pick(STALLS), "begging for a sweet at the market"];
       case "dog": return r < 0.75 ? [randomStroll(), "trotting around town"] : [pick(STALLS), "looking for scraps at the market"];
     }
@@ -181,6 +199,7 @@ export function createSim(W) {
     if (q < 0.66) return [pick(SHOPS), "going shopping"];
     if (q < 0.72) return [pick(TEAHOUSES.length ? TEAHOUSES : SHOPS), "meeting a friend at the teahouse"];
     if (q < 0.78) return [PAGODA, "going to pray at the pagoda"];
+    if (q < 0.805) return [SHRINEP, "visiting the mountain shrine"];
     return [randomStroll(), "out for a stroll"];
   }
   /** Smoothed count of slowed walkers on a destination's street segment (its anchor). */
@@ -300,8 +319,31 @@ export function createSim(W) {
     if (e.waitT > 1.4) cap = Math.max(cap, 0.5);   // don't queue forever
     ux += sx; uz += sz; const n = Math.hypot(ux, uz) || 1; return [ux / n, uz / n, Number.isFinite(cap) ? cap : 1];
   }
+  // ---- riding the gondola / lift: wait at the near end until a car is docked with room, ride it, step off at the far end
+  const LOAD = TRANSPORTS.map((T) => new Array(T.cars).fill(0));
+  const RIDE_TXT = { gondola: ["waiting for the gondola", "riding the gondola"], elevator: ["waiting for the lift", "riding the lift"] };
+  function rideStep(e, p, dt) {
+    const T = TRANSPORTS[p.ride], from = p.to === "A" ? "B" : "A";
+    if (!e.ride) { e.ride = { phase: "wait", act: e.activity }; e.activity = RIDE_TXT[T.kind][0]; }
+    const R = e.ride;
+    if (R.phase === "wait") {
+      e.mv = false; e.waiting = true; e.waitT = (e.waitT ?? 0) + dt;
+      for (let k = 0; k < T.cars; k++) { const st = carState(T, k, T_now); if (st.dock === from && st.rem > 1.2 && LOAD[p.ride][k] < T.cap) {
+        R.phase = "ride"; R.k = k; LOAD[p.ride][k]++; R.nocol = e.nocol; e.nocol = true; e.waiting = false;
+        R.ox = rnd(-3, 3); R.oz = rnd(-2.2, 2.2); e.activity = RIDE_TXT[T.kind][1] + (T.kind === "gondola" ? (p.to === "B" ? " up to the mountain shrine" : " down to the city") : p.to === "B" ? " up to the palace terrace" : " down to the market"); break; } }
+      return false;
+    }
+    const st = carState(T, R.k, T_now), pos = carPos(T, st.s);
+    e.x = pos.x + R.ox; e.z = pos.z + R.oz; e.absY = pos.y; e.mv = false; e.spd = 0;
+    if (st.dock === p.to) { // arrived: step off onto the platform at the far end
+      const end = T.ends[p.to]; e.x = end.x + rnd(-1.5, 1.5); e.z = end.z + rnd(-1.5, 1.5); e.absY = undefined; e.nocol = R.nocol; LOAD[p.ride][R.k]--;
+      e.activity = R.act; e.ride = null; e.pi++; e.mv = true; return e.pi >= e.path.length;
+    }
+    return false;
+  }
   const walkPath = (e, dt) => {
     if (!e.path || e.pi >= e.path.length) return true;
+    if (e.path[e.pi].ride !== undefined) return rideStep(e, e.path[e.pi], dt);
     const p = e.path[e.pi], dx = p.x - e.x, dz = p.z - e.z, d = Math.hypot(dx, dz);
     if (d <= Math.max(e.pi === e.path.length - 1 ? (e.dest && e.dest.hide ? 4 : e.dest && e.dest.kind === "stall" ? 4.5 : 2.5) : e.turn ? 7 : 1.2, e.speed * dt)) { e.x = p.x; e.z = p.z; e.pi++; e.stuck = 0; e.mv = true; return e.pi >= e.path.length; }
     const [ux, uz, cap] = d > 3 ? steer(e, dx / d, dz / d) : [dx / d, dz / d, 1];
@@ -368,9 +410,9 @@ export function createSim(W) {
   const crossesStatue = (ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1; const t = Math.max(0, Math.min(1, ((STATUE.x - ax) * dx + (STATUE.z - az) * dz) / L)); return Math.hypot(ax + dx * t - STATUE.x, az + dz * t - STATUE.z) < 31; };
   const anyoneNear = (x, z, r) => { const gx = Math.floor(x / CELL), gz = Math.floor(z / CELL); for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) { const cell = grid.get((gx + ox) * 4096 + gz + oz); if (cell) for (const j of cell) { const e = ents[j]; if (e.kind !== "cat" && Math.hypot(e.x - x, e.z - z) < r) return true; } } return false; };
 
-  let T = 0, congT = 0;
+  let T = 0, congT = 0, T_now = 0;
   function step(dt) {
-    T += dt;
+    T += dt; T_now = T;
     for (const e of ents) { e.ox = e.x; e.oz = e.z; e.mv = false; BRAINS[e.brain](e, dt); }
     collide();
     // congestion sampling (every step) → smoothed per-edge / per-junction slowed-walker counts once a second
@@ -380,7 +422,7 @@ export function createSim(W) {
     CONG.samples++; congT += dt;
     if (congT >= 1) { const k = 1 / CONG.samples;
       for (let i = 0; i < CONG.edge.length; i++) { CONG.edge[i] = CONG.edge[i] * 0.6 + CONG.edgeNow[i] * k * 0.4; CONG.edgeNow[i] = 0; }
-      for (let i = 0; i < NN; i++) { CONG.node[i] = CONG.node[i] * 0.6 + CONG.nodeNow[i] * k * 0.4; CONG.nodeNow[i] = 0; }
+      for (let i = 0; i < NNA; i++) { CONG.node[i] = CONG.node[i] * 0.6 + CONG.nodeNow[i] * k * 0.4; CONG.nodeNow[i] = 0; }
       CONG.samples = 0; congT = 0; }
     for (const e of ents) {
       if (e.mv && e.path && !e.waiting) { if (Math.hypot(e.x - e.ox, e.z - e.oz) < (e.spd ?? e.speed) * dt * 0.3) { e.stuck += dt; if (e.stuck > 2.5) { e.stuck = 0; e.pi++; } } else e.stuck = Math.max(0, e.stuck - dt); }

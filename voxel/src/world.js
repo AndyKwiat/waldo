@@ -181,7 +181,8 @@ export function terrainH(x, z) {
     const tiers = [[0, 150], [9, 168], [17, 184]];
     let tierH = PLATEAU; for (const [d, th] of tiers) if (into < d + wob(d)) { tierH = th + Math.round(4 * vnoise(x / 11, d)); break; }
     const edge = sstep((into - 30) / 60);
-    h = Math.min(tierH, PLATEAU) + (tierH >= PLATEAU ? mountainH(x, z) * edge : 0);
+    const flat = 1 - sstep((Math.hypot(x - (GX - 40), z - (CLIFF_Z - 110)) - 80) / 40);   // the shrine's meadow stays flat
+    h = Math.min(tierH, PLATEAU) + (tierH >= PLATEAU ? mountainH(x, z) * edge * (1 - flat) : 0);
     if (Math.abs(x - RX) < 10 && z > CLIFF_Z - 220) h = into < 26 ? 0 : Math.min(h, PLATEAU - 6);   // the river's gorge on the plateau, cut clean through the tiers (the falls)
     if (h <= 0) return LV[0] - 7;
     return Math.round(h);
@@ -206,6 +207,65 @@ export function terrainH(x, z) {
 /** Where bridges carry the east–west streets over the river (street lines r with a street on both banks). */
 export const BRIDGES = [];
 for (let r = 0; r <= ROWS; r++) { const w = HSEG[r][RIVER_C - 1], e = HSEG[r][RIVER_C]; if (w && e && w !== "none" && e !== "none") BRIDGES.push({ r, x: RX, z: SZ[r], y: LV[r] }); }
+// ---- wood-and-rope transport (sim + rendering share these definitions)
+// The GONDOLA climbs from the riverside station on the plaza terrace (block 5,4) over a pylon on the upper terrace,
+// the north wall and the great cliff, to the mountain shrine on the plateau; two cars shuttle on one rope (one up, one
+// down), hauled by oxen at a capstan in the lower station. The LIFT is a counterweighted cage in a timber tower on the
+// 30-high retaining wall of block (6,3), between the plaza terrace and the palace terrace. People ride both.
+const GB = block(RIVER_C, PLAZA_R), EB = block(6, 3);
+export const GX = RX + 20;                                    // the gondola rope runs straight north along x = GX
+// Stations are placed with rot 1 (model +x → world north): local (x, z) → world (z, −x). Low station: cable exit local
+// (32, 30, 0), capstan (−12, 0, 0), platform x 6..32 at y 6, stairs at local x 12..16 on +z. High station: cable in at
+// (−24, 30, 0), bullwheel (10.5, 19, 0). Car grip is 21 above its floor.
+export const GONDOLA_LOW = { x: GX, z: GB.z + 40, y: LV[PLAZA_R] };
+export const CAPSTAN = { x: GX, z: GONDOLA_LOW.z + 12, y: LV[PLAZA_R] };
+export const GONDOLA_HIGH = { x: GX, z: CLIFF_Z - 90, y: PLATEAU };
+export const SHRINE = { x: GX - 80, z: CLIFF_Z - 116, y: PLATEAU };                 // the mountain shrine on the plateau
+const ELX = EB.x + EB.w / 2, EMID = EB.z + EB.d / 2;
+export const LIFT = { x: ELX, z: EMID + 7, y: LV[4], wheel: { x: ELX + 11, y: LV[4] + 48, z: EMID + 7 } };
+export const TRANSPORTS = [
+  { id: "gondola", kind: "gondola", name: "Gondola", cars: 2, cap: 10, travel: 34, dwell: 9, hang: 21, sag: 6,
+    path: [{ x: GX, z: GONDOLA_LOW.z - 32, y: LV[PLAZA_R] + 30 }, { x: GX, z: SZ[3] + 28, y: LV[3] + 44 }, { x: GX, z: GONDOLA_HIGH.z + 24, y: PLATEAU + 30 }],
+    pylons: [{ x: GX, z: SZ[3] + 28, y: LV[3], h: 44 }],
+    ends: { A: { x: GX + 11, z: GONDOLA_LOW.z - 14, y: LV[PLAZA_R] }, B: { x: GX + 11, z: GONDOLA_HIGH.z + 12, y: PLATEAU } },
+    links: { A: [[RIVER_C, PLAZA_R], [RIVER_C + 1, PLAZA_R]], B: [] }, via: { A: { x: GX + 11, z: SZ[PLAZA_R] }, B: null }, cost: 160 },
+  { id: "lift", kind: "elevator", name: "Lift", cars: 1, cap: 6, travel: 7, dwell: 6, hang: 0, sag: 0,
+    path: [{ x: ELX, z: EMID + 7, y: LV[4] }, { x: ELX, z: EMID + 7, y: LV[3] }],
+    ends: { A: { x: ELX, z: EMID + 16, y: LV[4] }, B: { x: ELX, z: EMID - 13, y: LV[3] } },
+    links: { A: [[6, 4], [7, 4]], B: [[6, 3], [7, 3]] }, via: { A: { x: ELX, z: SZ[4] }, B: { x: ELX, z: SZ[3] } }, cost: 30 },
+];
+/** Mooring masts where cargo airships call (y = ground). */
+export const MASTS = [
+  { x: PALACE.x + PALACE.w - 46, z: PALACE.z + PALACE.d - 140 },
+  { x: SHRINE.x + 44, z: SHRINE.z - 30 },
+  { x: RX + 190, z: CITY.z1 + 240 },
+  { x: HAMLETS[0].x + 40, z: HAMLETS[0].z + 46 },
+  { x: block(1, 6).x + 20, z: block(1, 6).z + 14 },
+];
+/** Rects kept free of houses/trees for the transport (corridors, stations). */
+export const RESERVED = [
+  { x0: GX - 10, x1: GX + 10, z0: SZ[0], z1: SZ[PLAZA_R] },                         // under the gondola rope
+  { x0: GB.x - 2, x1: GB.x + GB.w + 2, z0: GB.z - 2, z1: GB.z + GB.d + 2 },          // the lower station's block
+  { x0: ELX - 16, x1: ELX + 26, z0: EB.z, z1: EB.z + EB.d },                        // the lift and its two approaches
+  ...[4].map((k) => ({ x0: block(1, 6).x + 8, x1: block(1, 6).x + 32, z0: block(1, 6).z + 2, z1: block(1, 6).z + 28 })),   // the district's mooring mast
+];
+export const isReserved = (x0, z0, x1, z1) => RESERVED.some((r) => x1 > r.x0 && x0 < r.x1 && z1 > r.z0 && z0 < r.z1);
+/** Where car k is at time t: {s 0..1 along the path, dock "A"|"B"|null, rem: seconds left in this dock}. */
+export function carState(T, k, t) {
+  const P = 2 * (T.dwell + T.travel), u = (((t + (k * P) / T.cars) % P) + P) % P, ease = (v) => v * v * (3 - 2 * v);
+  if (u < T.dwell) return { s: 0, dock: "A", rem: T.dwell - u };
+  if (u < T.dwell + T.travel) return { s: ease((u - T.dwell) / T.travel), dock: null, dir: 1 };
+  if (u < 2 * T.dwell + T.travel) return { s: 1, dock: "B", rem: 2 * T.dwell + T.travel - u };
+  return { s: 1 - ease((u - 2 * T.dwell - T.travel) / T.travel), dock: null, dir: -1 };
+}
+/** Point on a transport's rope/shaft at s (gondola spans sag between supports); y is the car's floor. */
+export function carPos(T, s) {
+  const P = T.path, L = []; let tot = 0; for (let i = 1; i < P.length; i++) { const l = Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y, P[i].z - P[i - 1].z); L.push(l); tot += l; }
+  let d = s * tot, i = 0; while (i < L.length - 1 && d > L[i]) { d -= L[i]; i++; }
+  const u = Math.max(0, Math.min(1, d / L[i])), a = P[i], b = P[i + 1];
+  return { x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u, y: a.y + (b.y - a.y) * u - T.sag * Math.sin(Math.PI * u) - T.hang, rope: a.y + (b.y - a.y) * u - T.sag * Math.sin(Math.PI * u) };
+}
+
 /** Walking height: the terrain, except on bridges (deck level). */
 export function groundH(x, z) {
   for (const b of BRIDGES) if (Math.abs(x - b.x) <= 13 && Math.abs(z - b.z) <= STREET / 2) return b.y;
@@ -231,6 +291,7 @@ export const GARDENS = ["garden_flower", "garden_pond"], GIANT_TREES = ["tree_ca
 export const GREAT_HALL = "palace_great_hall";
 let MODELS_EXTRA = new Set();
 export function setAvailableModels(names) { MODELS_EXTRA = new Set(names); }
+export const hasModel = (m) => MODELS_EXTRA.has(m);
 export const BIG_FOOT = { hall_house: { l: 25, r: 25, back: 18, roofY: 36 }, compound: { l: 30, r: 30, back: 19, roofY: 21 } };
 export function layout() {
   placeBumps();
@@ -238,7 +299,7 @@ export function layout() {
   const put = (model, x, z, rot = 0, o = {}) => { const s = { model, x, y: o.y ?? groundH(x, z), z, rot, remap: o.remap ?? null, key: model + (o.remapKey ?? "") }; statics.push(s); return s; };
   const ob = (x, z, r) => obstacles.push({ x, z, r });
   const TREES = ["tree_round", "tree_round", "tree_fruit", "tree_blossom", "tree_pine", "bamboo"];
-  const tree = (x, z, kinds = TREES) => put(pick(kinds), x, z, rndi(0, 3));
+  const tree = (x, z, kinds = TREES) => (isReserved(x - 3, z - 3, x + 3, z + 3) ? null : put(pick(kinds), x, z, rndi(0, 3)));
   const houseVariant = (type) => { const roof = pick(ROOFS), wall = pick(WALLS), pillar = pick(PILLARS), cloth = pick(CLOTHS); return { remap: variantRemap({ roof, wall, pillar, cloth }), remapKey: `|${roof}|${wall}|${pillar}|${cloth}` }; };
 
   // ---- city blocks: 2–3 buildings per row (homes, shops, inns, manors); the south row faces south, the north row north
@@ -276,6 +337,7 @@ export function layout() {
         const zFront0 = south ? b.z + b.d - front : b.z + front;   // centre with zero setback
         const maxDz = Math.max(0, Math.min(12, south ? (zFront0 - F.back) - backLimit : backLimit - (zFront0 + F.back)));
         const dz = Math.round(rnd(0, maxDz) * f), z = south ? zFront0 - dz : zFront0 + dz, rr = south ? r + 1 : r;
+        if (isReserved(x0, south ? z - F.back : z - 13, x1, south ? z + 13 : z + F.back)) { prevEnd = cursor + widths[i]; cursor = prevEnd + slack * wts[i + 1] / sw; continue; }   // keep transport corridors clear
         rects.push({ south, x0, x1, z0: south ? z - F.back : z - 13, z1: south ? z + 13 : z + F.back });
         if (GARDENS.includes(type)) { put(type, x, z, south ? 0 : 2, houseVariant(type)); prevEnd = cursor + widths[i]; cursor = prevEnd + slack * wts[i + 1] / sw; continue; }   // a garden: no door
         put(type, x, z, south ? 0 : 2, houseVariant(type));
@@ -291,10 +353,11 @@ export function layout() {
     const side = () => (chance(0.5) ? 1 : -1) * rnd(4, 7);   // the middle of the block is the retaining wall: keep things on one terrace
     if (chance(0.24)) for (let tries = 0; tries < 8; tries++) { const tx = b.x + rnd(16, b.w - 16), tz = b.z + b.d / 2 + side();
       if (rects.some((q) => tx > q.x0 - 5 && tx < q.x1 + 5 && tz > q.z0 - 5 && tz < q.z1 + 5) || giants.some((g) => Math.hypot(g.x - tx, g.z - tz) < 80)) continue;
+      if (isReserved(tx - 20, tz - 20, tx + 20, tz + 20)) continue;
       giants.push({ x: tx, z: tz }); put(pick(GIANT_TREES), tx, tz, rndi(0, 3)); ob(tx, tz, 4); break; }
     // back-yard trees in the middle of the block, wherever no house reaches
     for (let i = 0; i < 4; i++) { const tx = b.x + rnd(8, b.w - 8), tz = b.z + b.d / 2 + side(); if (!rects.some((q) => tx > q.x0 - 3 && tx < q.x1 + 3 && tz > q.z0 - 3 && tz < q.z1 + 3)) tree(tx, tz); }
-    { const px = b.x + rnd(14, b.w - 14), pz = b.z + b.d / 2 + side(); if (chance(0.5) && !rects.some((q) => px > q.x0 - 5 && px < q.x1 + 5 && pz > q.z0 - 5 && pz < q.z1 + 5)) put(pick(["well", "haystack", "crates", "jars"]), px, pz, rndi(0, 3)); }
+    { const px = b.x + rnd(14, b.w - 14), pz = b.z + b.d / 2 + side(); if (chance(0.5) && !isReserved(px - 5, pz - 5, px + 5, pz + 5) && !rects.some((q) => px > q.x0 - 5 && px < q.x1 + 5 && pz > q.z0 - 5 && pz < q.z1 + 5)) put(pick(["well", "haystack", "crates", "jars"]), px, pz, rndi(0, 3)); }
   }
   // closed side streets become gardens (T-junctions), often with a teahouse at one end facing the open street
   for (let c = 1; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
@@ -360,6 +423,16 @@ export function layout() {
     const x = (hz ? SX[e.a[0]] + (SX[e.b[0]] - SX[e.a[0]]) * t : SX[e.a[0]] + pick([-8, 8])), z = hz ? SZ[e.a[1]] + pick([-8, 8]) : SZ[e.a[1]] + (SZ[e.b[1]] - SZ[e.a[1]]) * t;
     if (cellAt(x, z) !== "street") continue; const m = pick(["lantern_post", "lantern_post", "jars", "crates", "haystack", "well"]); put(m, x, z, rndi(0, 3)); ob(x, z, m === "lantern_post" ? 2 : 5); }
 
+  // ---- bridges, the gondola and lift stations, the mountain shrine, airship masts
+  const has = (m) => MODELS_EXTRA.has(m);
+  if (has("bridge_stone")) for (const b of BRIDGES) put("bridge_stone", b.x, b.z, 0, { y: b.y - 10 });
+  if (has("gondola_station_low")) { put("gondola_station_low", GONDOLA_LOW.x, GONDOLA_LOW.z, 1); for (const dz of [-30, -20, -10]) ob(GX, GONDOLA_LOW.z + dz, 6); }
+  if (has("gondola_station_high")) put("gondola_station_high", GONDOLA_HIGH.x, GONDOLA_HIGH.z, 1);
+  if (has("elevator_tower")) { put("elevator_tower", LIFT.x, LIFT.z, 0, { y: LIFT.y }); ob(LIFT.x + 20, LIFT.z, 5); }
+  put("pagoda", SHRINE.x, SHRINE.z, 0); for (const sx of [-1, 1]) if (has("lion_statue")) put("lion_statue", SHRINE.x + sx * 12, SHRINE.z + 24, 0);
+  if (has("incense_burner")) put("incense_burner", SHRINE.x, SHRINE.z + 34, 0);
+  for (let k = 0; k < 16; k++) { const a = k / 16 * 6.28, d = rnd(58, 80); tree(SHRINE.x + Math.cos(a) * d, SHRINE.z + Math.sin(a) * d * 0.8, ["tree_pine", "tree_pine", "tree_blossom", "bamboo"]); }
+  if (has("mooring_mast")) for (const m of MASTS) { put("mooring_mast", m.x, m.z, 0); ob(m.x, m.z, 4); }
   // ---- city walls (24 tall): 22-long segments, towers at corners and along the sides, gate in the south wall
   // walls follow the terraces: each segment sits at the lower of its two ends (the uphill end is buried, never floating)
   const lowAt = (pts) => Math.min(...pts.map(([x, z]) => terrainH(x, z)));
