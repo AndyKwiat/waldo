@@ -37,7 +37,7 @@ function addDistanceDarkening(root) {
       if (lit) {
         sh.vertexShader = "varying vec3 vNightWP;\n" + sh.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n\tvec4 nwp = vec4( transformed, 1.0 );\n#ifdef USE_INSTANCING\n\tnwp = instanceMatrix * nwp;\n#endif\n\tvNightWP = ( modelMatrix * nwp ).xyz;");
         night = "\tif ( uNight > 0.0 ) { vec2 luv = ( vNightWP.xz - uLightRect.xy ) / uLightRect.zw; if ( luv.x > 0.0 && luv.y > 0.0 && luv.x < 1.0 && luv.y < 1.0 ) {" +
-          " vec2 lm = texture2D( uLightMap, luv ).rg; float ry = vNightWP.y - texture2D( uGroundMap, luv ).r * 256.0;" +
+          " vec2 lm = texture2D( uLightMap, luv ).rg; float ry = vNightWP.y - texture2D( uGroundMap, luv ).r * 1020.0;" +
           " float lo = lm.r * clamp( 1.0 - ( ry - 5.0 ) / 15.0, 0.04, 1.0 ); float hi = lm.g * ( 1.0 - smoothstep( 4.0, 30.0, abs( ry - 26.0 ) ) );" +
           " gl_FragColor.rgb += diffuseColor.rgb * vec3( 1.0, 0.62, 0.32 ) * ( lo + hi ) * uNight * uLightGain; } }\n";
       }
@@ -101,7 +101,7 @@ addEventListener("resize", () => { camera.aspect = innerWidth / innerHeight; cam
 
 const VIEWS = {
   town: () => [[W.CENTER.x + 170, 190, W.CENTER.z + 260], [W.CENTER.x, 0, W.CENTER.z - 10]],
-  overview: () => [[W.WX / 2, 1150, W.WZ + 560], [W.WX / 2, 0, W.WZ / 2 - 30]],
+  overview: () => [[W.WX / 2, 1250, W.WZ + 800], [W.WX / 2, -60, W.WZ / 2 - 30]],
   city: () => [[W.CITY.x0 + W.CW / 2, 760, W.CITY.z1 + 600], [W.CITY.x0 + W.CW / 2, 0, (W.CITY.z0 + W.CITY.z1) / 2]],
   walls: () => [[W.CITY.x1 + 70, 70, W.CITY.z1 + 80], [W.CITY.x1 - 60, 22, W.CITY.z1 - 10]],
   country: () => [[W.HAMLETS[2].x + 160, 120, W.HAMLETS[2].z + 210], [W.HAMLETS[2].x + 40, 0, W.HAMLETS[2].z - 20]],
@@ -117,7 +117,8 @@ const VIEWS = {
   gondola: () => [[W.GX + 110, 60, W.GONDOLA_LOW.z + 90], [W.GX, 30, W.GONDOLA_LOW.z - 40]],
   lift: () => [[W.LIFT.x + 70, 30, W.LIFT.z + 70], [W.LIFT.x, 18, W.LIFT.z - 4]],
   shrine: () => [[W.SHRINE.x + 120, 60, W.SHRINE.z + 130], [W.SHRINE.x + 20, 10, W.SHRINE.z + 20]],
-  falls: () => [[W.RX + 150, 70, W.CITY.z0 + 60], [W.RX, 40, W.CLIFF_Z]],
+  falls: () => [[W.RX + 200, 180, W.CITY.z0 + 230], [W.RX, 130, W.CLIFF_Z - 20]],
+  mountain: () => [[W.CITY.x1 + 500, 650, W.CITY.z1 + 700], [W.CENTER.x + 80, -60, W.CENTER.z - 120]],
   mill: () => [[L.WHEEL.x - 50, 40, L.WHEEL.z + 70], [L.WHEEL.x + 10, 4, L.WHEEL.z]],
   paddies: () => [[W.GATE_X - 160, 70, W.WALL_S + 150], [W.GATE_X - 160, 0, W.WALL_S + 55]],
   pagoda: () => { const b = W.block(...W.PAGODA_BLOCK); return [[b.x + 120, 80, b.z + 170], [b.x + 42, 10, b.z + 40]]; },
@@ -346,7 +347,7 @@ async function buildNight() {
   lm.flipY = false; lm.colorSpace = THREE.NoColorSpace; lm.minFilter = THREE.LinearFilter; lm.generateMipmaps = false;
   nightU.uLightMap.value = lm; nightU.uLightRect.value.set(rect.x, rect.z, rect.w, rect.d);
   { const gw = Math.ceil(rect.w / 4), gd = Math.ceil(rect.d / 4), gd8 = new Uint8Array(gw * gd);   // ground height (÷256) so light heights are relative to the terrain
-    for (let j = 0; j < gd; j++) for (let i = 0; i < gw; i++) gd8[j * gw + i] = Math.min(255, W.terrainH(rect.x + i * 4 + 2, rect.z + j * 4 + 2));
+    for (let j = 0; j < gd; j++) for (let i = 0; i < gw; i++) gd8[j * gw + i] = Math.min(255, Math.round(W.terrainH(rect.x + i * 4 + 2, rect.z + j * 4 + 2) / 4));
     const gt = new THREE.DataTexture(gd8, gw, gd, THREE.RedFormat, THREE.UnsignedByteType); gt.minFilter = gt.magFilter = THREE.LinearFilter; gt.needsUpdate = true; nightU.uGroundMap.value = gt; }
   sky = nightSky(new THREE.Vector3(-260, 420, 220)); scene.add(sky.group);
   sunMoon = celestial(new THREE.Vector3(-260, 420, 220)); scene.add(sunMoon.group);

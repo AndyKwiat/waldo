@@ -66,7 +66,7 @@ export async function buildTransport(scene, W, h) {
   function smallPose(k, t) { // slow loops over the city at different heights
     const cx = W.CENTER.x + (k - 1) * 240, cz = W.CENTER.z - 160 + k * 90, rx = 260 + k * 60, rz = 200 + k * 40, w = 0.018 + k * 0.005, a = t * w + k * 2.1;
     const x = cx + Math.cos(a) * rx, z = cz + Math.sin(a) * rz, dx = -Math.sin(a) * rx, dz = Math.cos(a) * rz;
-    return { x, y: 230 + k * 28 + Math.sin(t * 0.4 + k) * 6, z, yaw: Math.atan2(-dz, dx) };
+    return { x, y: 470 + k * 34 + Math.sin(t * 0.4 + k) * 6, z, yaw: Math.atan2(-dz, dx) };
   }
   let oxA = 0, prevT = null;
   return {

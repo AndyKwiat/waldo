@@ -9,7 +9,8 @@ function rng(seed) { let t = seed; return () => ((t = (t * 16807) % 2147483647) 
 const glintTex = (seed) => canvasTex(64, 256, (g, w, h) => { g.fillStyle = "#000"; g.fillRect(0, 0, w, h); const r = rng(seed);
   for (let i = 0; i < 70; i++) { const x = r() * w, y = r() * h, len = 6 + r() * 22, a = 0.25 + r() * 0.6; g.fillStyle = `rgba(255,255,255,${a})`;
     for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) g.fillRect(Math.round(x + dx), Math.round(y + dy), 1 + (r() < 0.3 ? 1 : 0), Math.round(len)); } });
-const streakTex = () => canvasTex(64, 128, (g, w, h) => { g.fillStyle = "#6ab8e8"; g.fillRect(0, 0, w, h); const r = rng(5);
+const streakTex = () => canvasTex(64, 128, (g, w, h) => { g.fillStyle = "#3f8fd0"; g.fillRect(0, 0, w, h); const r = rng(5);
+  for (let x = 0; x < w; x += 4) { g.fillStyle = (x / 4) % 3 === 0 ? "#5aa8e0" : (x / 4) % 3 === 1 ? "#3a84c4" : "#4a9ad8"; g.fillRect(x, 0, 4, h); }   // vertical bands of deeper / paler water
   for (let i = 0; i < 160; i++) { const x = Math.floor(r() * w), y = r() * h, len = 8 + r() * 40, c = r(); g.fillStyle = c < 0.5 ? "#ffffff" : c < 0.8 ? "#d8f0ff" : "#9ad0f4";
     for (const dy of [-h, 0, h]) g.fillRect(x, Math.round(y + dy), 1 + (r() < 0.4 ? 1 : 0), Math.round(len)); } });
 const puffTex = () => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"), grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -24,12 +25,12 @@ export function buildWater(scene, W) {
   for (let z = z0 + 2; z <= z1; z += z > W.WZ ? 12 : 2) {
     const y = R.y(z), xa = R.x(pz), xb = R.x(z), ha = R.halfW(pz), hb = R.halfW(z);
     if (Math.abs(y - py) > 1.5) { // a fall between pz and z: vertical sheet at z (facing south) + foam at its foot
-      const top = Math.max(y, py), bot = Math.min(y, py), hw = Math.min(ha, hb) + (top - bot > 40 ? 2 : 0);
-      const iz = pz + 1.2, i0 = falls.pos.length / 3;
-      falls.pos.push(xb - hw, top, iz, xb + hw, top, iz, xb + hw, bot, iz + 0.6, xb - hw, bot, iz + 0.6); falls.uv.push(0, top / 24, 1, top / 24, 1, bot / 24, 0, bot / 24); falls.idx.push(i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2);
+      const top = Math.max(y, py), bot = Math.min(y, py), hw = Math.min(ha, hb) + (top - bot > 40 ? 2 : 0); // the sheet hangs just in front of the drop face (which is at the grid line by pz…z)
+      const big = top - bot > 40, iz = big ? z + 1.2 : z + 0.8, i0 = falls.pos.length / 3;   // the great falls hug the lip; terrace falls hang in front of the drop
+      falls.pos.push(xb - hw, top, iz, xb + hw, top, iz, xb + hw, bot, iz + 0.6, xb - hw, bot, iz + 0.6); const uw = (2 * hw) / 20; falls.uv.push(0, top / 30, uw, top / 30, uw, bot / 30, 0, bot / 30); falls.idx.push(i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2);
       foams.push({ x: xb, y: bot + 0.5, z: iz + 2, w: hw, big: top - bot > 40 });
     }
-    if (!W.inRiverPool?.(xb, z)) strip(flats, [xa - ha, py, pz], [xa + ha, py, pz], [xb + hb, y, z], [xb - hb, y, z], pz / 48, z / 48);
+    else if (!W.inRiverPool?.(xb, z)) strip(flats, [xa - ha, py, pz], [xa + ha, py, pz], [xb + hb, y, z], [xb - hb, y, z], pz / 48, z / 48);
     pz = z; py = y;
   }
   // 2. the pool on the shelf below the great falls (a disc)
@@ -46,8 +47,8 @@ export function buildWater(scene, W) {
     const m = new THREE.Mesh(flatGeo, new THREE.MeshBasicMaterial({ map, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -16 }));
     m.renderOrder = 2; scene.add(m); glints.push({ map, speed, op, mat: m.material });
   }
-  const streaks = streakTex(); streaks.repeat.set(1, 1);
-  const fallMat = new THREE.MeshLambertMaterial({ map: streaks, transparent: true, opacity: 0.88, side: THREE.DoubleSide, emissive: new THREE.Color("#4a8ab0"), emissiveIntensity: 0.35 });
+  const streaks = streakTex(); streaks.repeat.set(1, 1); streaks.colorSpace = THREE.SRGBColorSpace;   // without this the blues wash out to beige
+  const fallMat = new THREE.MeshLambertMaterial({ map: streaks, transparent: true, opacity: 0.92, side: THREE.DoubleSide, emissive: new THREE.Color("#2a5a88"), emissiveIntensity: 0.3 });
   const fall = new THREE.Mesh(fallGeo, fallMat); scene.add(fall);
   // 3. foam and mist at every fall's foot: point clouds (the AO pass skips points, so they never darken the scene)
   const r = rng(33), clouds = [];

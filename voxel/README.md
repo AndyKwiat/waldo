@@ -37,10 +37,12 @@ fast-forward>` · `&seed=N` · `&low` (cheap rendering) · `&noshadow` · `&noao
 | `scripts/` | `serve.ts` static server · `shot.ts` headless screenshots · `build-models.ts` + `voxer.ts` Voxer driver |
 
 ## The mountain
-The city climbs a mountainside (`world.js`): every east–west street line r sits at terrace level `LV[r]` (gate 10 → palace
-118); inside a block the drop happens at the block's middle as a dressed-stone retaining wall (houses keep to their half),
-and north–south streets climb it as stairs. `terrainH(x, z)` is the surface (also the plateau at `PLATEAU` = 196 above a
-tiered cliff at `CLIFF_Z`, the pool on the shelf below it, slopes and pads outside the walls, the lowland); `groundH` adds
+The city is cut into a mountain (`world.js`): every east–west street line r sits at terrace level `LV[r]` (gate 10 → palace
+334); inside a block the drop happens at the block's middle as a jagged rock cliff 75–90 high (`cliffZ`: a wandering,
+ragged edge; houses keep to their half), and north–south streets climb it as long stairs. The mountain's flanks
+(`flankRise`) rise up on both sides of the city, so it sits in a notch; city walls are only built where the flank
+doesn't already wall it in. The river is 54 wide (bridges are three arches, water gates three side by side). `terrainH(x, z)` is the surface (also the plateau at `PLATEAU` = 196 above a
+tiered 234-high cliff at `CLIFF_Z` (the great falls drop into a slot gorge), the pool on the shelf below it, slopes and pads outside the walls, the lowland); `groundH` adds
 bridge decks. The river (`RIVER.x/halfW/y(z)`) falls off the plateau in the great waterfall, runs down the city in a stone
 channel along column `RIVER_C` with a fall at every terrace, under `water_gate`s in the walls, and out across the
 lowland; `water.js` meshes it (flat stretches with scrolling glints, fall sheets with streaks, foam/mist point clouds).
