@@ -1,0 +1,12 @@
+{
+  "name": "jade-river-polygon",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun scripts/serve.ts",
+    "shot": "bun scripts/shot.ts"
+  },
+  "dependencies": {
+    "three": "0.170.0"
+  }
+}

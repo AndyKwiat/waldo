@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Jade River City — Low Poly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#a6d6f4;font-family:'Fredoka',ui-rounded,system-ui,sans-serif}
+  canvas{display:block}
+  .win{background:rgba(22,30,52,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.22);border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.25);color:#fff}
+  #hud{position:fixed;top:16px;left:16px;padding:14px 18px;max-width:300px;user-select:none}
+  #hud h1{margin:0 0 6px;font-size:20px;font-weight:600;color:#ffd77a;letter-spacing:.5px}
+  #hud p{margin:5px 0;font-size:12.5px;line-height:1.55;color:#e6ecff}
+  #census{color:#b8c8f0 !important}
+  #clock{position:fixed;top:16px;right:16px;padding:8px 14px;font-size:22px;font-weight:600;color:#ffd77a;user-select:none}
+  #info{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:12px 22px;font-size:13px;line-height:1.6;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;min-width:240px}
+  #info .nm{font-size:17px;font-weight:600;color:#ffd77a} #info .tt{color:#b8c8f0} #info .ac{color:#fff}
+  #views{position:fixed;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:5px;max-width:min(600px,calc(100vw - 200px))}
+  button{font:600 11px 'Fredoka',ui-rounded,system-ui,sans-serif;color:#eef2ff;background:rgba(22,30,52,.72);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:5px 11px;cursor:pointer;text-transform:uppercase;letter-spacing:.4px}
+  button:hover{color:#ffd77a} button.on{color:#22283a;background:#ffd77a;border-color:#ffd77a}
+  #fx{position:fixed;right:12px;bottom:34px;display:flex;gap:5px}
+  #stats{position:fixed;bottom:10px;right:14px;color:#fff;font:12px ui-monospace,Menlo,monospace;text-shadow:0 1px 2px #000;pointer-events:none}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#3a8ce0,#a8d8f6);color:#fff;font-size:22px;font-weight:600;letter-spacing:1px;z-index:5}
+</style>
+<script type="importmap">
+{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="loading">Building the city…</div>
+<div id="hud" class="win">
+  <h1>Jade River City</h1>
+  <p>Left-drag orbit · right-drag pan · scroll zoom · WASD move<br>Click anyone to follow them (Esc stops) · N night · T day cycle · [ ] time</p>
+  <p id="census"></p>
+</div>
+<div id="clock" class="win">10:30</div>
+<div id="info" class="win"></div>
+<div id="views"></div>
+<div id="fx"></div>
+<div id="stats"></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
