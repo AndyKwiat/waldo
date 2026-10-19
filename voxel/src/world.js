@@ -205,7 +205,11 @@ export function flankRise(x, z) {
   const k = 1 - sstep((z - (CITY.z1 - 160)) / 420), base = z < CITY.z0 ? LV[0] : z <= CITY.z1 ? levelAt(z) : 0;
   if (k <= 0) return 0;
   const cap = (PLATEAU + 30 - base) * k * (0.72 + 0.4 * vnoise(x / 70, z / 70));
-  return cap * sstep(dx / 170) + 34 * (vnoise(x / 23, z / 23) - 0.5) * sstep(dx / 30) * k + 10 * (vnoise(x / 7, z / 7) - 0.5) * sstep(dx / 20) * k;
+  const raw = cap * sstep(dx / 170) + 34 * (vnoise(x / 23, z / 23) - 0.5) * sstep(dx / 30) * k;
+  // break the slope into rock ledges: heights snap to steps ~26 high whose edges wander, faces get ragged columns
+  const step = 26, q = step * Math.floor((raw + 14 * vnoise(x / 13, z / 13) + 6 * vnoise(x / 4.1, z / 4.1)) / step);
+  const ledge = Math.max(0, Math.min(raw, q + 4 * vnoise(x / 9 + 30, z / 9)));
+  return ledge + 5 * (vnoise(x / 2.6, z / 2.6) - 0.5) * sstep(dx / 20) * k;
 }
 /** Terrain outside the city's x range before pads/bumps: terrace or lowland level + the mountain flank. */
 function outerBase(x, z) {
@@ -217,10 +221,11 @@ export function terrainH(x, z) {
   let h;
   if (z < CLIFF_Z) {
     // the great cliff: four tiers whose faces wander in and out, ragged columns, narrow ledges, the plateau above
-    const into = CLIFF_Z - z, wob = (k) => 12 * vnoise(x / 29 + k * 17, k * 3.1) + 5 * vnoise(x / 8 + k * 5, k);
-    const tiers = [[0, LV[0] + 62], [11, LV[0] + 124], [22, LV[0] + 178], [32, LV[0] + 214]];
-    let tierH = PLATEAU; for (const [d, th] of tiers) if (into < d + wob(d)) { tierH = th + Math.round(10 * vnoise(x / 9, z / 9 + d) - 5); break; }
-    const edge = sstep((into - 50) / 60);
+    const into = CLIFF_Z - z, wob = (k) => 10 * vnoise(x / 29 + k * 17, k * 3.1) + 6 * vnoise(x / 8 + k * 5, k);
+    const tiers = [[0, LV[0] + 30], [6, LV[0] + 58], [12, LV[0] + 88], [17, LV[0] + 112], [23, LV[0] + 142], [28, LV[0] + 168], [34, LV[0] + 194], [40, LV[0] + 216]];   // many short ledges
+    const jag = 7 * (vnoise(x / 3.1, z / 3.1) - 0.5) + 4 * (vnoise(x / 1.7 + 9, z / 1.7) - 0.5);   // ragged rock columns along each face
+    let tierH = PLATEAU; for (const [d, th] of tiers) if (into < d + wob(d) + jag) { tierH = th + Math.round(10 * vnoise(x / 9, z / 9 + d) - 5 + 9 * (vnoise(x / 2.9, z / 2.9 + d) - 0.5)); break; }
+    const edge = sstep((into - 60) / 60);
     const flat = 1 - sstep((Math.hypot(x - (GX + 40), z - (CLIFF_Z - 110)) - 90) / 40);   // the shrine's meadow stays flat
     h = Math.min(tierH, PLATEAU) + (tierH >= PLATEAU ? mountainH(x, z) * edge * (1 - flat) : 0);
     const dr = Math.abs(x - RX);
@@ -777,21 +782,31 @@ function terrainField(x0, x1, z0, z1, s, H, o) {
   g.addGroup(0, idx[0].length, 0); g.addGroup(idx[0].length, idx[1].length, 1); g.addGroup(idx[0].length + idx[1].length, idx[2].length, 2);
   g.computeBoundingSphere(); return g;
 }
+/** Top colour on the mountain's flanks and the cliff ledges: grey rock with grassy / mossy patches. */
+function rockTop(h, x, z, C) {
+  const rise = z < CLIFF_Z ? h - LV[0] : flankRise(x, z), n = vnoise(x / 15, z / 15), k = hash(Math.floor(x / 2), Math.floor(z / 2));
+  if (h >= PLATEAU - 2 && z < CLIFF_Z - 40) return mountainColor(h, x, z, C);
+  if (rise < 8 || n > 0.66) return C.set(k > 0.5 ? "#62b446" : "#58a840");                       // grassy shelves
+  if (n > 0.56) return C.set(k > 0.5 ? "#6a7a52" : "#7a8460");                                   // moss
+  return C.set(ROCK[Math.floor(k * ROCK.length)]).multiplyScalar(1.08);                           // bare rock
+}
 const inCityWalls = (x, z) => x > CITY.x0 - 30 && x < CITY.x1 + 30 && z > CLIFF_Z - 2 && z < CITY.z1 + 30;
 function mountainColor(h, x, z, C) {
   const r = h - PLATEAU, snow = 62 + 10 * vnoise(x / 9, z / 9), rock = 30 + 6 * vnoise(x / 7 + 50, z / 7);
   if (h < PLATEAU - 4) return C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446");
   return C.set(r > snow ? "#f4f8ff" : r > rock ? (hash(x, z) > 0.5 ? "#8aa0b0" : "#7e94a6") : r > 12 ? (hash(x, z) > 0.5 ? "#4f9a5a" : "#478f52") : hash(x, z) > 0.5 ? "#5cae48" : "#54a442");
 }
-const ROCK = ["#8e8a84", "#7c7872", "#9a958c", "#6f6b66", "#857f76", "#a29c90"];
+const ROCK = ["#8c8e92", "#797b80", "#9a9ca0", "#6c6e74", "#84868b", "#a6a8aa", "#90908c"];
 const dressed = (x, z) => inCityWalls(x, z) && (inRiver(x, z, 4) || Math.hypot(x - POOL.x, z - POOL.z) < POOL.r + 4);
 /** Side faces: dressed stone for the river channel / pool / stair risers, banded rock (with moss and dark seams) for every
  *  real drop — the terrace cliffs, the great cliff and the mountain flanks. */
 function sideColorAt(h, hn, x, z, C) {
   if (dressed(x, z) && h - hn < 16) return C.set("#c8bea8");   // the channel's low banks (its big drops are rock: the falls)
-  if (h - hn >= 3 || h > PLATEAU - 260 && !inCityWalls(x, z)) {
-    const band = hash(Math.floor(x / 5) + Math.floor(z / 5) * 7, Math.floor(h / 6)), k = hash(Math.floor(x / 2), Math.floor(h / 2) + Math.floor(z / 2) * 3);
-    if (k > 0.94) return C.set("#4f4b48");                                                   // dark seam
+  if (h - hn >= 3 || (!inCityWalls(x, z) && (h - hn >= 2 || flankRise(x, z) > 8 || z < CLIFF_Z))) {
+    // strata: colour bands mostly by height (slightly wavy), so faces read as layered rock rather than flat walls
+    const band = hash(Math.floor((h + 3 * vnoise(x / 17, z / 17)) / 4), Math.floor(x / 23) + Math.floor(z / 23) * 5), k = hash(Math.floor(x / 2), Math.floor(h / 2) + Math.floor(z / 2) * 3);
+    if (Math.floor(h + 2 * vnoise(x / 9, z / 9)) % 13 === 0) return C.set("#5a5c62");        // a dark horizontal seam
+    if (k > 0.95) return C.set("#4c4e54");                                                   // cracks
     if (k > 0.86 && band > 0.4) return C.set(h > PLATEAU - 40 ? "#5d7a46" : "#6a7a52");       // moss tufts
     return C.set(ROCK[Math.floor(band * ROCK.length)]);
   }
@@ -801,11 +816,11 @@ function sideColorAt(h, hn, x, z, C) {
 }
 /** The ground: {main} = the world rect (textured tops, brick retaining walls) and {outer} = mountains + slopes beyond it. */
 export function terrainGeometry() {
-  const main = terrainField(0, WX, CLIFF_Z, WZ, 2, terrainH, { textured: (x, z) => z >= CLIFF_Z, topColor: mountainColor, sideColor: sideColorAt, brick: (x, z, d) => d >= 2 && d < 16 && dressed(x, z) });
+  const main = terrainField(0, WX, CLIFF_Z, WZ, 2, terrainH, { textured: (x, z) => z >= CLIFF_Z && flankRise(x, z) < 8, topColor: rockTop, sideColor: sideColorAt, brick: (x, z, d) => d >= 2 && d < 16 && dressed(x, z) });
   const parts = [
-    terrainField(-900, WX + 900, -420, CLIFF_Z, 4, terrainH, { topColor: mountainColor, sideColor: sideColorAt }),
-    terrainField(-900, 0, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446"), sideColor: sideColorAt }),
-    terrainField(WX, WX + 900, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446"), sideColor: sideColorAt }),
+    terrainField(-900, WX + 900, -420, CLIFF_Z, 4, terrainH, { topColor: rockTop, sideColor: sideColorAt }),
+    terrainField(-900, 0, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => (flankRise(x, z) < 8 ? C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446") : rockTop(h, x, z, C)), sideColor: sideColorAt }),
+    terrainField(WX, WX + 900, CLIFF_Z, WZ + 300, 4, terrainH, { topColor: (h, x, z, C) => (flankRise(x, z) < 8 ? C.set(hash(x, z) > 0.5 ? "#6cc04c" : "#62b446") : rockTop(h, x, z, C)), sideColor: sideColorAt }),
   ];
   return { main, outer: parts };
 }
