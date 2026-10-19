@@ -167,8 +167,8 @@ function bumpsAt(x, z) { let h = 0; for (const b of BUMPS) { const d2 = ((x - b.
 // ---- the cliffs inside the city: the drop between two terraces runs along the middle of each block as a jagged rock
 // face (its edge wanders in z, its columns are ragged), crisp only where the lift tower stands against it
 const CLIFF_W = 5;
-// cargo lifts: two per cliff band, at these block columns (the cliff is straight where a lift stands against it)
-export const LIFT_SPOTS = [[3, 0], [3, 6], [5, 1], [5, 7], [6, 0], [6, 6], [7, 1], [7, 6]].map(([r, c]) => ({ r, c, x: Math.round(block(c, r).x + block(c, r).w / 2), mid: (SZ[r] + SZ[r + 1]) / 2 }));
+// cargo lifts: one per cliff band, on the east side of the city, at these block columns (the cliff is straight where a lift stands against it)
+export const LIFT_SPOTS = [[3, 6], [5, 7], [6, 6], [7, 6]].map(([r, c]) => ({ r, c, x: Math.round(block(c, r).x + block(c, r).w / 2), mid: (SZ[r] + SZ[r + 1]) / 2 }));
 const liftAt = (r, x) => LIFT_SPOTS.find((l) => l.r === r && Math.abs(x - l.x) < 26);
 function cliffZ(r, x) {
   const mid = (SZ[r] + SZ[r + 1]) / 2;

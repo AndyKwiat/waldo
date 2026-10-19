@@ -53,7 +53,7 @@ lowland; `water.js` meshes it (flat stretches with scrolling glints, fall sheets
 - **Mountain gondola:** a second line on the west side, from the lowland just outside the south wall (through a gap in
   it) over five pylons, with a stop on the plaza terrace, up to the plateau; a bridge carries the plateau path over the
   river to the shrine. Lines can have any number of stops (`stops`, `carState` with per-stop dwells).
-- **Cargo lifts:** two per cliff band (`LIFT_SPOTS`), a stack of `cargo_lift_section`s up the rock (scaled to the drop)
+- **Cargo lifts:** one per cliff band on the east side (`LIFT_SPOTS`), a stack of `cargo_lift_section`s up the rock (scaled to the drop)
   with a `cargo_lift_head` gantry on the clifftop and a 32×32 `cargo_lift_cage`. Carts can't climb stairs: their graph
   is level streets + lifts only (a cart counts 4 of a cage's 10 places). Stairs: the main avenue's grand stair (double
   width, top to bottom) plus one more per band; the other stair streets became garden strips.
