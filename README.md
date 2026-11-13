@@ -8,7 +8,7 @@ A living city simulation in the browser: thousands of little people run errands,
 
 ## What it is
 
-It started as a "Where's Waldo?"-style pixel-art crowd scene and grew into a city sim. Every citizen has a home and a role, and they move around a street graph doing errands: shopping at market stalls, visiting shops, inns and friends, working the rice paddies outside the gate, and going in and out of doors. Routing avoids congestion, and crowds keep right and steer around each other. You can click anyone to follow them.
+It started as a pixel-art "spot the hidden characters" crowd scene and grew into a city sim. Every citizen has a home and a role, and they move around a street graph doing errands: shopping at market stalls, visiting shops, inns and friends, working the rice paddies outside the gate, and going in and out of doors. Routing avoids congestion, and crowds keep right and steer around each other. You can click anyone to follow them.
 
 The repo holds several editions, newest first:
 
@@ -17,8 +17,8 @@ The repo holds several editions, newest first:
 | [`polygon/`](polygon/) | **Low-poly edition**, the current one. The voxel mountain city rebuilt with flat-shaded polygons, with a full day/night cycle (dawn, noon, sunset, night) |
 | [`voxel/`](voxel/) | **Voxel edition**. A 3D city cut into a mountain on terraced cliffs, with a river and waterfalls, a palace, a giant statue in the market square, gondolas, cargo lifts and airships. Buildings are voxel models generated from code recipes |
 | `index.html` | **2D pixel edition**. The original city sim in a 16-bit RPG style: a walled riverside city with guards, patrols, vehicles, pets, pigeons, boats and rice paddies, and a live census |
-| `index.pixel-v1.html` | Earlier pixel-art version, a find-the-characters game ("Where's Waldo?") in an eastern walled city |
-| `index.waldo-western.html` | Earliest art style, the same find-the-characters game in a medieval market town |
+| `index.pixel-v1.html` | Earlier pixel-art version, a "Spot Them!" find-the-characters game in an eastern walled city |
+| `index.western.html` | Earliest art style, the same find-the-characters game in a medieval market town |
 
 The 3D editions share the same world layout and simulation code (`world.js` / `sim.js`). Each one has its own README with the details.
 
@@ -63,3 +63,4 @@ python3 -m http.server 8000   # then open http://localhost:8000/
 - Instanced meshes for every actor and model, custom shaders for walk animation, water, night lighting and fog, and post-processing (GTAO, bloom, ACES tone mapping)
 - Bun for the dev server and for `scripts/shot.ts`, a headless Chrome screenshot tool
 - Voxel models are built from code recipes with Voxer, a separate voxel editor that isn't included here. The built models are checked in under `voxel/models/`, so you only need Voxer to rebuild them
+- `.mcp.json` registers Voxer's MCP server for Claude Code. It looks for Voxer in `../voxer` (a sibling folder); set `VOXER_DIR` to point elsewhere.

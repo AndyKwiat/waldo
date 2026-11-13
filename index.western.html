@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Where's Waldo? — Living Medieval City</title>
+<title>Spot Them! — Living Medieval City</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#5f8f3c;font-family:Georgia,'Times New Roman',serif}
   canvas{display:block}
@@ -24,7 +24,7 @@
 <body>
 <div id="loading">Drawing the city…</div>
 <div id="hud">
-  <h1>WHERE'S WALDO?</h1>
+  <h1>SPOT THEM!</h1>
   <p>A medieval market town. Scroll to zoom, drag to pan, click a character to identify them.</p>
   <ul id="list"></ul>
   <p id="hint" style="color:#666;font-size:12px"></p>
@@ -591,16 +591,16 @@ function pickField(e){ const b=e.band; if(b===0){e.tx=rnd(20,W-20);e.ty=rnd(20,Y
 function addPerson(p,opts){ const frames=D.addStrip(4,42,64,(ctx,i)=>drawPerson(ctx,p,i)); return makeEntity(frames,{...opts,scale:1,speed:p.speed*(opts.speedMul||1),fps:p.fps}); }
 
 // specials
-const waldo=genPerson('plain'); Object.assign(waldo,{skin:'#f7d6b5',hair:'#5a3a1e',hairStyle:0,hat:10,hatBase:'#d9342b',hatStripe:'#f4f1e8',top:'#f4f1e8',stripes:'#d9342b',bottom:'#2f62c4',dress:false,cloak:false,beard:false,mustache:false,item:chance(0.5)?'staff':null,glasses:true,buttons:false,belt:true,cheeks:false,tabard:null,speed:24,fps:6});
-const wenda=genPerson('plain'); Object.assign(wenda,{skin:'#f7d6b5',hair:'#5a3a1e',hairStyle:1,hat:10,hatBase:'#d9342b',hatStripe:'#f4f1e8',top:'#f4f1e8',stripes:'#d9342b',bottom:'#2f62c4',dress:true,cloak:false,beard:false,mustache:false,item:null,glasses:true,buttons:false,belt:false,apron:false,cheeks:false,tabard:null,speed:22,fps:6});
-const odlaw=genPerson('plain'); Object.assign(odlaw,{skin:'#efc39c',hair:'#1c1c1c',hairStyle:0,hat:10,hatBase:'#f2c530',hatStripe:'#1c1c1c',top:'#f2c530',stripes:'#1c1c1c',bottom:'#1c1c1c',dress:false,cloak:false,beard:false,mustache:true,item:null,glasses:true,buttons:false,belt:false,cheeks:false,tabard:null,speed:26,fps:6});
-const wizard=genPerson('wizard'); Object.assign(wizard,{hair:'#f4f1e8',beard:true,hat:3,hatColor:'#d9342b',top:'#2f62c4',bottom:'#2f62c4',item:'staff',speed:16});
-specials.waldo={e:addPerson(waldo,{mode:'street'}),name:'Waldo',color:'#d9342b'};
-specials.wenda={e:addPerson(wenda,{mode:'plaza'}),name:'Wenda',color:'#ef476f'};
-specials.wizard={e:addPerson(wizard,{mode:'street'}),name:'Wizard Whitebeard',color:'#2f62c4'};
-specials.odlaw={e:addPerson(odlaw,{mode:'street'}),name:'Odlaw',color:'#f2c530'};
+const pip=genPerson('plain'); Object.assign(pip,{skin:'#f7d6b5',hair:'#5a3a1e',hairStyle:0,hat:10,hatBase:'#2f8a4a',hatStripe:'#f4f1e8',top:'#f4f1e8',stripes:'#2f8a4a',bottom:'#6b4a2a',dress:false,cloak:false,beard:false,mustache:false,item:chance(0.5)?'staff':null,glasses:false,buttons:false,belt:true,cheeks:false,tabard:null,speed:24,fps:6});
+const wren=genPerson('plain'); Object.assign(wren,{skin:'#f7d6b5',hair:'#5a3a1e',hairStyle:1,hat:10,hatBase:'#2f8a4a',hatStripe:'#f4f1e8',top:'#f4f1e8',stripes:'#2f8a4a',bottom:'#6b4a2a',dress:true,cloak:false,beard:false,mustache:false,item:null,glasses:false,buttons:false,belt:false,apron:false,cheeks:false,tabard:null,speed:22,fps:6});
+const rook=genPerson('plain'); Object.assign(rook,{skin:'#efc39c',hair:'#1c1c1c',hairStyle:0,hat:10,hatBase:'#7a2a5a',hatStripe:'#1c1c1c',top:'#7a2a5a',stripes:'#1c1c1c',bottom:'#1c1c1c',dress:false,cloak:false,beard:false,mustache:true,item:null,glasses:true,buttons:false,belt:false,cheeks:false,tabard:null,speed:26,fps:6});
+const wizard=genPerson('wizard'); Object.assign(wizard,{hair:'#f4f1e8',beard:true,hat:3,hatColor:'#6a3a9a',top:'#2f62c4',bottom:'#2f62c4',item:'staff',speed:16});
+specials.pip={e:addPerson(pip,{mode:'street'}),name:'Pip',color:'#2f8a4a'};
+specials.wren={e:addPerson(wren,{mode:'plaza'}),name:'Wren',color:'#ef476f'};
+specials.wizard={e:addPerson(wizard,{mode:'street'}),name:'Old Sage',color:'#2f62c4'};
+specials.rook={e:addPerson(rook,{mode:'street'}),name:'Rook',color:'#7a2a5a'};
 const woofFrames=D.addStrip(4,42,64,(ctx,i)=>drawDog(ctx,{color:'#f4f1e8',stripes:true},i));
-specials.woof={e:makeEntity(woofFrames,{mode:'street',speed:34,fps:7,kind:'dog',standFrame:0,pauseChance:0.3}),name:'Woof',color:'#f4f1e8'};
+specials.biscuit={e:makeEntity(woofFrames,{mode:'street',speed:34,fps:7,kind:'dog',standFrame:0,pauseChance:0.3}),name:'Biscuit',color:'#f4f1e8'};
 
 const ARCHS=['peasant','peasant','peasant','merchant','merchant','noble','monk','plain','plain','plain','kid','kid','jester','wizard','knight'];
 // street walkers

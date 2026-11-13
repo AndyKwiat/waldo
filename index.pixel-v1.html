@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Where's Waldo? — Living Pixel City of the East</title>
+<title>Spot Them! — Living Pixel City of the East</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#557a4a;font-family:Georgia,'Times New Roman',serif}
   canvas{display:block;image-rendering:pixelated}
@@ -24,7 +24,7 @@
 <body>
 <div id="loading">Painting the city…</div>
 <div id="hud">
-  <h1>WHERE'S WALDO?</h1>
+  <h1>SPOT THEM!</h1>
   <p>A walled city in the mountains. Scroll to zoom, drag to pan, click a character to identify them.</p>
   <ul id="list"></ul>
   <p id="hint" style="color:#6b5a48;font-size:12px"></p>
@@ -605,17 +605,17 @@ function pickYard(e){ const y=e.yard; e.tx=rnd(y.x,y.x+y.w); e.ty=rnd(y.y,y.y+y.
 function pickField(e){ const b=e.band; if(b===0){e.tx=rnd(20,W-20);e.ty=rnd(20,Y0-45);} else if(b===1){e.tx=rnd(20,W-20);e.ty=rnd(YT+60,FIELD_TOP-10);} else if(b===2){e.tx=rnd(20,X0-45);e.ty=rnd(20,YT);} else {e.tx=rnd(W-X0+45,W-20);e.ty=rnd(20,YT);} }
 function addPerson(p,opts){ const frames=D.addStrip(4,44,66,(ctx,i)=>drawPerson(ctx,p,i)); return makeEntity(frames,{...opts,scale:1,speed:p.speed*(opts.speedMul||1),fps:p.fps}); }
 
-// specials (the classic cast, dressed as they always are)
-const waldo=genPerson('plain'); Object.assign(waldo,{skin:'#f2d6b0',hair:'#3a2e28',hairStyle:0,hat:10,hatBase:'#b83a2a',hatStripe:'#efe3c0',top:'#efe3c0',stripes:'#b83a2a',stripeW:0,bottom:'#2f4a7a',dress:false,cloak:false,beard:false,mustache:false,item:chance(0.5)?'staff':null,glasses:true,collar:false,belt:true,cheeks:false,armor:false,speed:24,fps:6});
-const wenda=genPerson('plain'); Object.assign(wenda,{skin:'#f2d6b0',hair:'#3a2e28',hairStyle:1,hat:10,hatBase:'#b83a2a',hatStripe:'#efe3c0',top:'#efe3c0',stripes:'#b83a2a',stripeW:0,bottom:'#2f4a7a',dress:true,cloak:false,beard:false,mustache:false,item:null,glasses:true,collar:false,belt:false,apron:false,cheeks:false,armor:false,speed:22,fps:6});
-const odlaw=genPerson('plain'); Object.assign(odlaw,{skin:'#e8c49a',hair:'#1e1a18',hairStyle:0,hat:10,hatBase:'#d9a63a',hatStripe:'#1e1a18',top:'#d9a63a',stripes:'#1e1a18',stripeW:0,bottom:'#1e1a18',dress:false,cloak:false,beard:false,mustache:true,item:null,glasses:true,collar:false,belt:false,cheeks:false,armor:false,speed:26,fps:6});
-const wizard=genPerson('daoist'); Object.assign(wizard,{hair:'#efe3c0',beard:true,hat:3,hatColor:'#b83a2a',top:'#2f4a7a',bottom:'#2f4a7a',item:'staff',speed:16,collar:false});
-specials.waldo={e:addPerson(waldo,{mode:'street'}),name:'Waldo',color:'#b83a2a'};
-specials.wenda={e:addPerson(wenda,{mode:'plaza'}),name:'Wenda',color:'#d9a0a0'};
-specials.wizard={e:addPerson(wizard,{mode:'street'}),name:'Wizard Whitebeard',color:'#2f4a7a'};
-specials.odlaw={e:addPerson(odlaw,{mode:'street'}),name:'Odlaw',color:'#d9a63a'};
+// specials: the hidden cast to find
+const pip=genPerson('plain'); Object.assign(pip,{skin:'#f2d6b0',hair:'#3a2e28',hairStyle:0,hat:10,hatBase:'#2f8a4a',hatStripe:'#efe3c0',top:'#efe3c0',stripes:'#2f8a4a',stripeW:0,bottom:'#6b4a2a',dress:false,cloak:false,beard:false,mustache:false,item:chance(0.5)?'staff':null,glasses:false,collar:false,belt:true,cheeks:false,armor:false,speed:24,fps:6});
+const wren=genPerson('plain'); Object.assign(wren,{skin:'#f2d6b0',hair:'#3a2e28',hairStyle:1,hat:10,hatBase:'#2f8a4a',hatStripe:'#efe3c0',top:'#efe3c0',stripes:'#2f8a4a',stripeW:0,bottom:'#6b4a2a',dress:true,cloak:false,beard:false,mustache:false,item:null,glasses:false,collar:false,belt:false,apron:false,cheeks:false,armor:false,speed:22,fps:6});
+const rook=genPerson('plain'); Object.assign(rook,{skin:'#e8c49a',hair:'#1e1a18',hairStyle:0,hat:10,hatBase:'#7a2a5a',hatStripe:'#1e1a18',top:'#7a2a5a',stripes:'#1e1a18',stripeW:0,bottom:'#1e1a18',dress:false,cloak:false,beard:false,mustache:true,item:null,glasses:true,collar:false,belt:false,cheeks:false,armor:false,speed:26,fps:6});
+const wizard=genPerson('daoist'); Object.assign(wizard,{hair:'#efe3c0',beard:true,hat:3,hatColor:'#6a3a9a',top:'#2f4a7a',bottom:'#2f4a7a',item:'staff',speed:16,collar:false});
+specials.pip={e:addPerson(pip,{mode:'street'}),name:'Pip',color:'#2f8a4a'};
+specials.wren={e:addPerson(wren,{mode:'plaza'}),name:'Wren',color:'#d9a0a0'};
+specials.wizard={e:addPerson(wizard,{mode:'street'}),name:'Old Sage',color:'#2f4a7a'};
+specials.rook={e:addPerson(rook,{mode:'street'}),name:'Rook',color:'#7a2a5a'};
 const woofFrames=D.addStrip(4,44,66,(ctx,i)=>drawDog(ctx,{color:'#efe3c0',stripes:true},i));
-specials.woof={e:makeEntity(woofFrames,{mode:'street',speed:34,fps:7,kind:'dog',standFrame:0,pauseChance:0.3}),name:'Woof',color:'#efe3c0'};
+specials.biscuit={e:makeEntity(woofFrames,{mode:'street',speed:34,fps:7,kind:'dog',standFrame:0,pauseChance:0.3}),name:'Biscuit',color:'#efe3c0'};
 
 const ARCHS=['farmer','farmer','merchant','merchant','scholar','official','monk','lady','lady','plain','plain','kid','kid','porter','performer','daoist'];
 for(let i=0;i<860;i++) addPerson(genPerson(pick(ARCHS)),{mode:'street'});
